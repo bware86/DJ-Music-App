@@ -287,8 +287,8 @@
   .wave-toggle:hover { color: var(--text); border-color: var(--text-faint); }
   .wave-toggle:focus-visible { outline: 2px solid var(--perfect); outline-offset: 2px; }
   canvas.wave {
-    display: block; width: 100%; height: 48px;
-    border-radius: 8px; background: #0a0b14;
+    display: block; width: 100%; height: 60px;
+    border-radius: 8px; background: #000;
     border: 1px solid var(--line-soft);
   }
 
@@ -448,7 +448,7 @@
       <span class="wave-toggle" id="wave-toggle" role="button" tabindex="0" aria-label="Switch waveform color theme">CLASSIC &#9656;</span>
       <span id="wave-time">00:00</span>
     </div>
-    <canvas class="wave" id="wave" width="1072" height="96"></canvas>
+    <canvas class="wave" id="wave" width="1240" height="120"></canvas>
   </div>
 
   <!-- Countdown -->
@@ -849,22 +849,31 @@
   // ---- Waveform strip ----
   const wave = document.getElementById("wave");
   const wctx = wave.getContext("2d");
-  const WCOLS = 520;
+  const WCOLS = 620;        // column count, echoing a real overview strip
+  const VIS_BARS = 40;      // bars represented across the strip
   const waveData = [];
+  function rndv(i, s) { const x = Math.sin(i * 0.9163 + s * 57.13) * 43758.5453; return x - Math.floor(x); }
   (function genWave() {
+    const colsPerBeat = WCOLS / (VIS_BARS * 4);
     for (let i = 0; i < WCOLS; i++) {
       const t = i / WCOLS;
-      // energy arc: intro -> build -> sustained peak -> outro dip
-      const arc = 0.28
-        + 0.55 * Math.pow(Math.sin(Math.min(1, t * 1.06) * Math.PI), 0.5)
-        + 0.14 * (t > 0.5 ? 1 : t / 0.5);
-      const transient = 0.6 + 0.4 * Math.abs(Math.sin(t * WCOLS * 0.21)); // fine per-column detail
-      const low  = arc * transient * (0.55 + 0.45 * Math.abs(Math.sin(t * 41)));
-      const mid  = arc * (0.30 + 0.45 * Math.abs(Math.sin(t * 23 + 1))) * (0.45 + 0.55 * t);
-      const high = arc * (0.25 + 0.55 * Math.abs(Math.sin(t * 97 + 2))) * (0.4 + 0.6 * transient);
-      // vox present in two chorus regions -> drawn as a highlight overlay
-      const vox = ((t > 0.30 && t < 0.44) || (t > 0.62 && t < 0.86))
-        ? 0.55 + 0.45 * Math.abs(Math.sin(t * 60)) : 0;
+      const beatPhase = (i % colsPerBeat) / colsPerBeat;          // 0..1 within a beat
+      const beatInBar = Math.floor((i / colsPerBeat) % 4);
+      // structure: short build-in, full body, a breakdown, brief outro
+      const build = t < 0.10 ? t / 0.10 : 1;
+      const breakdown = (t > 0.70 && t < 0.90);
+      const outro = t > 0.96;
+      const drive = breakdown ? 0.4 : (outro ? 0.5 : 1);
+      const arc = build * drive * (0.9 + 0.1 * Math.sin(t * 22));
+      // sharp kick transient on each beat, stronger on the downbeat
+      const kick = Math.exp(-Math.pow(beatPhase / 0.10, 2)) * (beatInBar === 0 ? 1.15 : 1);
+      // hats sit on the offbeat
+      const hat = Math.exp(-Math.pow((beatPhase - 0.5) / 0.11, 2));
+      const jag = 0.5 + 0.5 * rndv(i, 1);                          // jagged per-column detail
+      const low  = arc * (0.16 + 1.00 * kick * (breakdown ? 0.25 : 1)) * jag;
+      const mid  = arc * (0.12 + 0.55 * rndv(i, 2)) * (0.4 + 0.6 * t) * (breakdown ? 0.6 : 1);
+      const high = arc * (0.14 + 0.55 * hat + 0.45 * rndv(i, 3)) * (breakdown ? 1.2 : 0.8);
+      const vox = ((t > 0.30 && t < 0.45) || (t > 0.60 && t < 0.88)) ? 0.5 + 0.5 * rndv(i, 4) : 0;
       waveData.push({
         low: Math.min(1, low), mid: Math.min(1, mid), high: Math.min(1, high), vox: vox
       });
@@ -888,43 +897,79 @@
   let waveTheme = "rgb";
   let wProgress = 0;
 
+  // one mirrored band bar, centered on the axis
+  function band(x, h, color, a, mid, bw) {
+    if (h < 0.5) h = 0.5;
+    wctx.globalAlpha = a;
+    wctx.fillStyle = color;
+    wctx.fillRect(x, mid - h, bw, h * 2);
+  }
+  function tri(x, y, s, down) {
+    wctx.beginPath();
+    wctx.moveTo(x - s, y);
+    wctx.lineTo(x + s, y);
+    wctx.lineTo(x, down ? y + s * 1.5 : y - s * 1.5);
+    wctx.closePath();
+    wctx.fill();
+  }
+  function drawGrid(W, H) {
+    const cw = W / WCOLS;
+    const colsPerBar = WCOLS / VIS_BARS;
+    for (let b = 0; b <= VIS_BARS; b++) {
+      const x = Math.round(b * colsPerBar * cw) + 0.5;
+      const phrase = b % 4 === 0;   // phrase boundary (every 4 bars) = red markers
+      wctx.globalAlpha = phrase ? 0.34 : 0.12;
+      wctx.fillStyle = "#ffffff";
+      wctx.fillRect(x, 5, 1, H - 10);
+      if (phrase) {
+        wctx.globalAlpha = 0.95; wctx.fillStyle = "#ff2d55";
+        tri(x, 1, 5, true); tri(x, H - 1, 5, false);
+      } else {
+        wctx.globalAlpha = 0.5; wctx.fillStyle = "#9aa0b8";
+        tri(x, 1, 3.5, true); tri(x, H - 1, 3.5, false);
+      }
+    }
+    wctx.globalAlpha = 1;
+  }
+
   function drawWave(progress) {
     wProgress = progress;
     const T = WAVE_THEMES[waveTheme];
     const W = wave.width, H = wave.height, mid = H / 2;
     wctx.clearRect(0, 0, W, H);
+    wctx.fillStyle = "#000"; wctx.fillRect(0, 0, W, H);
     const cw = W / WCOLS;
-    const bw = cw + 0.6;
-    const scale = mid * 0.94;
-    // frequency-stacked, mirrored around center (low core, mid, high on top)
+    const bw = Math.max(1, cw * 0.92);
+    const scale = mid * 0.97;
+    // additive blend: bands glow together (pure red on bass, cyan in breakdown,
+    // white/pink where broadband) — the Rekordbox RGB look
+    wctx.globalCompositeOperation = "lighter";
     for (let i = 0; i < WCOLS; i++) {
       const d = waveData[i];
       const x = i * cw;
-      const alpha = (i / WCOLS) <= progress ? 1 : 0.22;
-      const lo = d.low * scale, md = d.mid * scale, hi = d.high * scale;
-      wctx.globalAlpha = alpha;
-      wctx.fillStyle = T.low;  wctx.fillRect(x, mid - lo, bw, lo * 2);
-      wctx.fillStyle = T.mid;  wctx.fillRect(x, mid - lo - md, bw, md);
-                               wctx.fillRect(x, mid + lo, bw, md);
-      wctx.fillStyle = T.high; wctx.fillRect(x, mid - lo - md - hi, bw, hi);
-                               wctx.fillRect(x, mid + lo + md, bw, hi);
+      const a = (i / WCOLS) <= progress ? 1 : 0.34;
+      band(x, d.high * scale, T.high, a, mid, bw);
+      band(x, d.mid * scale, T.mid, a, mid, bw);
+      band(x, d.low * scale, T.low, a, mid, bw);
     }
-    // vocal presence: highlight overlay over the chorus regions
+    wctx.globalCompositeOperation = "source-over";
+    // vocal presence: subtle highlight overlay over the chorus regions
     for (let i = 0; i < WCOLS; i++) {
       if (waveData[i].vox > 0) {
         const x = i * cw;
-        const played = (i / WCOLS) <= progress ? 1 : 0.22;
-        wctx.globalAlpha = played * 0.16 * waveData[i].vox;
+        const played = (i / WCOLS) <= progress ? 1 : 0.34;
+        wctx.globalAlpha = played * 0.12 * waveData[i].vox;
         wctx.fillStyle = T.vox;
         wctx.fillRect(x, 0, bw, H);
       }
     }
     wctx.globalAlpha = 1;
-    // playhead + dim the un-played remainder
+    drawGrid(W, H);
+    // dim the un-played remainder, then the red playhead
     const px = progress * W;
-    wctx.fillStyle = "#05060c66";
+    wctx.fillStyle = "#00000073";
     wctx.fillRect(px, 0, W - px, H);
-    wctx.fillStyle = "#ffffff";
+    wctx.fillStyle = "#ff2d55";
     wctx.fillRect(px - 1, 0, 2, H);
   }
   drawWave(0);
