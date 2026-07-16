@@ -86,34 +86,40 @@ None of these target DJs, and the licensed-music ones (Beatstar) are catalog-loc
 1. **Decode** the file to PCM via the native module.
 2. **Waveform extraction:** downsample amplitude peaks per time window, split into low/mid/high frequency energy per window (via FFT) to drive the RGB waveform (see 6.4).
 3. **BPM detection:** onset-strength/autocorrelation-based tempo estimation (standard beat-tracking DSP approach).
-4. **Onset/band detection (marker generation):** per analysis window, run FFT and bucket energy into bands used as proxies for:
-   - **Bass** — low-frequency band onsets (~20–250 Hz)
-   - **Drums/Beats** — broadband transient/percussive onsets (spectral flux spikes)
-   - **Vocals** — mid-frequency band with vocal-formant characteristics (~300 Hz–3.5 kHz, harmonic content)
-   Each detected onset above a confidence threshold becomes a **marker** with a timestamp, lane/type, and intensity (used for point value / marker size).
+4. **Onset/band detection (marker generation):** per analysis window, run FFT and bucket energy into the 4 lane types (matching the color system in 6.4):
+   - **Low (Bass)** — low-frequency band onsets (~20–250 Hz)
+   - **Mid** — mid-frequency band onsets (~250 Hz–3.5 kHz)
+   - **High** — high-frequency/percussive transient onsets (~3.5 kHz+, spectral flux spikes)
+   - **Vocals** — mid-band onsets with vocal-formant/harmonic characteristics (detected separately from generic Mid onsets)
+   Each detected onset above a confidence threshold becomes a **marker** with a timestamp, lane/type, intensity, and a **confidence score**. The full set of detected onsets is stored; **how many are surfaced as playable markers is decided at play-time by the selected difficulty (see 6.8)** — so one analysis pass serves all three difficulties.
 5. Results (waveform data, BPM, key if tagged, marker timeline) are written to local storage as a compact JSON/binary blob per track.
 
 This is a **precompute-once, play-from-cache** design — no real-time DSP during gameplay, which keeps the game loop simple and battery-friendly.
 
-### 6.4 RGB Waveform Display
-- Full-track waveform rendered with color channels mapped to frequency bands (e.g., R = bass energy, G = mid/vocal energy, B = high/percussive energy) per time slice, so a glance at the waveform shows where the track is heavy in bass vs. vocals vs. highs.
+### 6.4 RGB Waveform Display & Unified Color System
+- Full-track waveform rendered with color channels mapped to frequency bands per time slice, so a glance at the waveform shows where the track is heavy in bass vs. mids vs. highs.
+- **Shared color language (key design principle):** the waveform band colors and the gameplay marker/lane colors are the *same palette*, so the player learns one color code and it reinforces across both surfaces. When they see "red is loud" in the waveform, red markers in the game mean the same thing.
+
+| Band / Lane | Color | Waveform channel | Frequency proxy |
+|---|---|---|---|
+| **Low (Bass)** | Red | R | ~20–250 Hz |
+| **Mid** | Green | G | ~250 Hz–3.5 kHz |
+| **High** | Blue | B | ~3.5 kHz+ |
+| **Vocals** | Accent (e.g. white/gold — TBD in design pass) | overlay highlight, not a raw RGB channel | mid-band *harmonic* content |
+
+- **The 3-vs-4 resolution:** RGB is only 3 channels, but we have 4 lanes. Low/Mid/High map cleanly to R/G/B. **Vocals are special** — they're detected from *harmonic/formant* characteristics within the mid band, not a separate frequency channel, so a raw RGB waveform can't give them their own channel. Vocals therefore get a distinct 4th accent color, shown in the waveform as a **highlight overlay** on the sections where vocal energy is detected (rather than a blended channel). This keeps the core Low/Mid/High → R/G/B mapping honest while still giving vocals a consistent, learnable color.
 - Shown on the track detail screen (scrubbable/zoomable) and as a scrolling backdrop during gameplay.
 
 ### 6.5 Light / Dark Mode
 - Full theme support, follows system setting by default with a manual override in settings.
 - Applies to library, track detail, gameplay, and results screens.
 
-### 6.6 Gameplay Loop (Guitar Hero–style)
-- **Lanes:** 4 fixed lanes at the bottom of the screen, one per marker type — Bass, Drums, Beats, Vocals — each with a distinct color and marker shape (e.g., Bass = red square, Drums = orange circle, Beats = yellow diamond, Vocals = blue triangle — exact palette TBD in design pass, must hold up in both light and dark mode).
+### 6.6 Gameplay Loop (falling-marker / lane-based style)
+- **Lanes:** 4 fixed lanes at the bottom of the screen, one per marker type — **Low (Bass), Mid, High, Vocals** — using the **shared color system from 6.4** (Low=Red, Mid=Green, High=Blue, Vocals=accent). Each lane also has a distinct marker *shape* (not just color) so the coding survives color-blindness and both light/dark themes — e.g. Low=square, Mid=circle, High=triangle, Vocals=diamond (exact shapes finalized in the design pass).
 - **Marker flow:** markers spawn at the top of the screen and fall toward a hit line above the lane buttons, timed so they reach the line exactly when their corresponding sound occurs in the track (i.e., the fall duration is a fixed lead time, e.g. 2 seconds, giving the player a consistent reaction window).
 - **Input:** on-screen tap targets, one per lane, aligned under each lane. Player taps the correct lane's button as its marker crosses the hit line.
 - **Note types:** MVP ships with **tap markers** (instantaneous hits). The marker data model, however, carries a `type`/`duration` field from the start so **hold/sustain notes** (tap-and-hold across a sustained bass or pad) and later **slide notes** can be added without reworking the schema — borrowed from Beatstar's note variety. Hold notes are a fast-follow, not MVP.
-- **Timing judgment:** each hit is scored against how close (in ms) the tap was to the marker's ideal timestamp, **after subtracting the per-device latency offset from calibration (see 6.7):**
-  - **Perfect:** within ±30ms
-  - **Good:** within ±80ms
-  - **Bad:** within ±150ms
-  - **Miss:** outside ±150ms or no input before the marker passes
-  (exact windows tunable; see Open Questions on difficulty tiers)
+- **Timing judgment:** each hit is scored against how close (in ms) the tap was to the marker's ideal timestamp, **after subtracting the per-device latency offset from calibration (see 6.7).** The exact Perfect/Good/Bad windows **depend on the selected difficulty (see 6.8)** — e.g. on Normal: Perfect ±30ms, Good ±80ms, Bad ±150ms, Miss beyond that or no input before the marker passes.
 - **Scoring:** Perfect = 100 pts, Good = 50 pts, Bad = 10 pts, Miss = 0 and breaks combo. Consecutive non-miss hits build a combo multiplier (e.g., +10% per 10-combo, capped) to reward sustained accuracy.
 - **Session flow:** pick a track → short countdown → track plays back while markers fall → results screen at the end showing score, accuracy %, max combo, per-lane breakdown (helps a DJ see e.g. "I'm weak on catching vocal entries").
 - **Playback control:** pause/resume; a track can be replayed anytime from the library.
@@ -123,6 +129,18 @@ This is a **precompute-once, play-from-cache** design — no real-time DSP durin
 - Flow: the player taps along to a simple steady beat; the app computes the average offset between the beat and their taps and applies it to all future timing judgments.
 - **Why it's in MVP, not optional:** device audio/display/touch latency varies widely and directly corrupts a timing-sensitive game — without calibration, "Perfect" hits register as "Good/Bad" on slower devices and the game feels broken. This is the single most-copied lesson from Cytoid. Prompted during onboarding and accessible anytime from Settings.
 
+### 6.8 Difficulty Tiers (MVP)
+Player picks **Easy / Normal / Hard** per play session (chosen after selecting a track). The difficulty affects two independent knobs, both served from the *same* cached analysis:
+
+| Difficulty | Marker density | Timing windows (Perfect / Good / Bad) |
+|---|---|---|
+| **Easy** | Sparse — only the highest-confidence onsets surface (e.g. strong downbeats & obvious bass hits); fewer simultaneous markers | Forgiving — e.g. ±50 / ±120 / ±200 ms |
+| **Normal** | Moderate — main rhythmic events across all four lanes | Standard — ±30 / ±80 / ±150 ms |
+| **Hard** | Dense — most detected onsets surface, including subtler mid/high events and faster sequences | Tight — e.g. ±20 / ±50 / ±100 ms |
+
+- **Density is controlled by a confidence threshold + a per-lane rate cap**, not by genre. The analysis pass stores every onset with a confidence score; each difficulty simply admits onsets above its threshold (with a cap on markers-per-second per lane so dense tracks stay playable). This means **marker density scales with difficulty, independent of musical genre** — a sparse ambient track and a dense DnB track both get an appropriate-feeling chart at each level.
+- Scores are tracked per-difficulty (a Hard clear is a distinct record from an Easy clear on the same track).
+
 ## 7. Permissions & Privacy
 
 - Folder/file access permission requested with a clear explanation of why (to read locally stored music for analysis).
@@ -131,6 +149,7 @@ This is a **precompute-once, play-from-cache** design — no real-time DSP durin
 
 ## 8. Non-Functional Requirements
 
+- **Minimum OS: iOS 16+ and Android 10 (API 29)+.** Rationale: (1) Android 10 is where **scoped storage / Storage Access Framework** stabilized, which our folder-access model depends on; (2) both cover the large majority of devices still in active use, and DJs — who invest in gear — skew toward newer hardware, so a modern floor costs us very little audience; (3) a newer floor gives the DSP pipeline more consistent performance to target. This is a starting decision — Phase 0 may raise the Android floor slightly if older mid-range chips can't keep up with the analysis workload.
 - Analysis of an average 4-minute track should complete in well under real-time (target: under ~10s on a mid-range device) so importing a library doesn't feel like a blocker; show per-track progress in the library view.
 - Gameplay must hold a steady 60fps for marker animation; any dropped frames directly hurt timing-sensitive input.
 - App must work fully offline after initial install.
@@ -151,9 +170,9 @@ This is a **precompute-once, play-from-cache** design — no real-time DSP durin
 - **Phase 0 — Technical spike:** Validate folder access on both platforms and validate the native audio decode → FFT → BPM/onset pipeline end-to-end on one sample track each platform. This phase de-risks the whole project before UI work starts.
 - **Phase 1 — Library foundation:** Folder import, file scanning, metadata/artwork extraction, library list UI, light/dark theme shell.
 - **Phase 2 — Analysis pipeline:** Full BPM detection, waveform + RGB band extraction, onset/marker generation, local caching, per-track analysis progress UI.
-- **Phase 3 — Core gameplay:** Lane rendering, falling markers, hit-line input handling, **latency calibration screen (6.7)**, timing judgment, scoring, results screen.
+- **Phase 3 — Core gameplay:** Lane rendering, falling markers, hit-line input handling, **latency calibration screen (6.7)**, **Easy/Normal/Hard difficulty (6.8)**, timing judgment, scoring, results screen.
 - **Phase 4 — Polish:** Animations/juice, RGB waveform backdrop during play, settings screen (incl. re-run calibration), onboarding/permission flow, empty states.
-- **Phase 5 — Post-MVP (not in initial build):** Hold/sustain & slide note types, audio-based key detection (chroma analysis) for untagged tracks, loop/practice mode, slow-down practice speed, per-track cue-point notes, difficulty tiers, additional marker types.
+- **Phase 5 — Post-MVP (not in initial build):** Hold/sustain & slide note types, audio-based key detection (chroma analysis) for untagged tracks, loop/practice mode, slow-down practice speed, per-track cue-point notes, additional marker types.
 
 ## 11. Success Metrics (informal, since this is a personal/indie project)
 
@@ -166,14 +185,26 @@ This is a **precompute-once, play-from-cache** design — no real-time DSP durin
 - **Key:** Read-from-tag only for MVP; show "Unknown" when untagged. Audio-based key detection deferred to Phase 5.
 - **Latency calibration:** Promoted into MVP (Phase 3) as a requirement.
 - **Note types:** MVP = tap only, but marker schema supports hold/slide for a post-MVP fast-follow.
+- **Difficulty:** Easy/Normal/Hard in MVP (see 6.8).
+- **Marker density:** Scales with **difficulty**, not musical genre — via a confidence threshold + per-lane rate cap on a single cached analysis (see 6.8).
+- **Color system:** Marker/lane colors and RGB waveform bands share one palette (Low=R, Mid=G, High=B, Vocals=accent) so the color code reinforces across both surfaces (see 6.4).
+- **Minimum OS floor:** **iOS 16+ and Android 10 / API 29+** (rationale in §8). Revisit if Phase 0 shows the DSP struggles on the low end of that range.
+- **Legal (gameplay style):** Falling-marker/lane rhythm mechanic is a non-copyrightable game system and free to use; we avoid the "Guitar Hero" trademark and use our own art/name.
 
 ## 12. Open Questions
 
-1. **Difficulty tiers:** one fixed timing-window difficulty, or Easy/Normal/Hard with different marker density and timing windows?
-3. **Marker density/genre handling:** should marker density scale with track complexity (e.g., fewer markers for sparse ambient tracks, more for dense drum & bass), or a fixed target markers-per-minute regardless of genre?
-4. **Device support floor:** any minimum OS version / device age to target, given the DSP workload (affects how conservative the analysis pipeline needs to be)?
-5. **Naming:** working title is "DJ Rhythm Trainer" — do you have an actual app name in mind?
+1. **Naming:** working title is "DJ Rhythm Trainer." No name chosen yet — see the brainstorm list below; open to picking one or generating more.
+
+### Name brainstorm (working candidates)
+- **BeatVision** — nods to the RGB visual/waveform angle
+- **CueDrop** — "cue" (DJ term) + falling markers
+- **MixTrainer** — plainly says what it does
+- **WaveRunner** — the scrolling RGB waveform + rhythm run *(note: check trademark — shared with a jet-ski brand)*
+- **DropCatch** — catching the drop / catching markers
+- **SpectraTap** — spectrum colors + tapping
+- **FlowState** — the "flow" of a track the user described *(common phrase — check store collisions)*
+- **KickCue** — kicks/beats + DJ cue
 
 ---
 
-*Status: Draft for review. Nothing has been built yet — once you sign off (or send edits), the plan is to start with Phase 0 (the technical spike) before any UI work, since it validates the riskiest assumptions first.*
+*Status: Draft, decisions locked in per §11 Resolved Decisions. Nothing has been built yet. Next step is Phase 0 (the technical spike) before any UI work, since it validates the riskiest assumptions first.*
