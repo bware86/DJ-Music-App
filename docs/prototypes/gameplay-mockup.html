@@ -528,6 +528,9 @@
   // the track rather than a transcription of every hit.
 
   // ---- State ----
+  const MARKER_HALF = 27;   // half the 54px marker, so its CENTER aligns to the hit line
+  let audioLatency = 0;     // speaker output latency, so visuals match what's heard
+
   let ac = null;
   let master = null;
   let noiseBuf = null;
@@ -709,14 +712,15 @@
     schedTimer = setTimeout(scheduler, 25);
   }
 
-  function spawnMarker(id, hitTime) {
+  function spawnMarker(id, soundTime) {
     const L = LANES.find(function (x) { return x.id === id; });
     const node = document.createElement("div");
     node.className = "marker " + L.shape;
     node.style.setProperty("--c", "var(" + L.varc + ")");
     node.innerHTML = '<div class="body"></div>';
     markerLayers[id].appendChild(node);
-    const m = { lane: id, hitTime: hitTime, node: node, judged: false };
+    // hit line crossing = when the sound is actually HEARD (scheduled + output latency)
+    const m = { lane: id, hitTime: soundTime + audioLatency, node: node, judged: false };
     markers.push(m);
     laneStats[id].total++;
   }
@@ -730,7 +734,8 @@
       const m = markers[i];
       if (m.judged) continue;
       const progress = (now - (m.hitTime - LEAD)) / LEAD; // 0 at top, 1 at line
-      const y = progress * lineY;
+      // align the marker's CENTER to the hit line at the beat (not its top edge)
+      const y = progress * lineY - MARKER_HALF;
       m.node.style.transform = "translateY(" + y + "px)";
       // miss if passed beyond bad window
       if (now - m.hitTime > DIFF[diff].bad + 0.02) {
@@ -1004,6 +1009,8 @@
 
   function launch() {
     running = true;
+    // measured speaker latency so markers cross the line in sync with the heard sound
+    audioLatency = ac.outputLatency || ac.baseLatency || 0;
     startTime = ac.currentTime + 0.1;
     nextStep = 0;
     scheduler();
