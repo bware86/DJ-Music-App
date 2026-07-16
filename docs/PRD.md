@@ -23,6 +23,33 @@ A mobile rhythm game that turns a DJ's own downloaded music library into practic
 
 Working and hobbyist DJs who already keep a library of purchased/ripped tracks on their phone and want a faster, more game-like way to internalize a track's structure (where the drop is, where vocals come in, where the breakdown starts) than passive listening.
 
+## 4a. Competitive Analysis
+
+A market scan (iOS/Android stores + web) found **no existing app that combines a rhythm game with DJ-focused ear-training on the player's own local library.** The space splits into two adjacent categories that each cover only part of this concept, which is the core opportunity/differentiator.
+
+### Category A — Rhythm games that use your own music (closest on *gameplay*)
+
+| App | Platform | How it works | What's worth borrowing |
+|---|---|---|---|
+| **Cytoid** | iOS/Android | Community-authored charts; strong audio-sync tech | **Latency calibration & one-time device sync setup** — essential for any timing game |
+| **Beatstar** | iOS/Android | Licensed songs only, hand-authored charts with tap/slide/hold notes | Polished note-streaming feel; **variety of note types** (tap/hold/slide), not just single taps |
+| **Audiosurf / Beat Hazard / Symphony** | mostly PC/older | Auto-generate gameplay from any song the user loads | Proves **auto-chart-generation from arbitrary local audio is viable** — validates our core premise |
+
+None of these target DJs, and the licensed-music ones (Beatstar) are catalog-locked because they had to license their tracks — a constraint we sidestep entirely by only ever using the user's own local files and never transmitting them.
+
+### Category B — DJ analysis tools (closest on *features*, but no gameplay)
+
+| App | What it does | What's worth borrowing |
+|---|---|---|
+| **Mixed In Key** | Industry-standard BPM + **key detection** (Camelot notation) | Confirms key is valuable to DJs; tags written by this tool let us read key for free |
+| **BPM Analyzer** (iOS) | BPM detection + multiple **waveform styles** (bars, wave, circular, spectrum, oscilloscope) | Validates appetite for rich waveform visualization — our RGB waveform is a novel extension of this |
+| **DJ.Studio** | AI beatmatching; visually breaks down transitions for *learners* | Closest in *intent* (teaching DJs) but it's a mixing tool, not a game |
+
+### Conclusions folded into this PRD
+1. **Latency calibration is now an MVP requirement** (Phase 3), not a nice-to-have — borrowed from Cytoid. A timing game is unplayable if input/audio/display latency isn't calibrated per device.
+2. **Marker system is designed to support hold/sustain (and later slide) note types**, borrowed from Beatstar — full hold notes may land post-MVP, but the data model won't have to be reworked to add them.
+3. Our **RGB frequency-band waveform** is already more novel than competitors' waveform views, confirming the visualization direction.
+
 ## 5. Platform & Tech Stack
 
 **Platform:** Cross-platform via React Native (Expo bare/dev-client workflow — the managed workflow won't support the native modules this app needs).
@@ -51,8 +78,8 @@ Working and hobbyist DJs who already keep a library of purchased/ripped tracks o
 ### 6.2 Track Metadata Display
 - Album/track artwork (from embedded tags; fallback to a generic placeholder if absent).
 - Artist name, track title, album.
-- BPM (detected, or tag value if embedded and trusted).
-- Musical key, if present in tags (e.g., Camelot notation or standard key from `TKEY`/`initialkey`/Mixed In Key tags). Not computed from audio in MVP if untagged — see Open Questions.
+- **BPM — kept for MVP.** Detected from audio via the analysis pipeline (mature, low-risk DSP), or read from the embedded tag when present and trusted. Common in DJ libraries as a tag written by Serato/Rekordbox/Mixed In Key.
+- **Musical key — read-from-tag only for MVP.** If a key tag is present (`TKEY`/`initialkey`/Mixed In Key Camelot tags), display it as-is. If untagged, show **"Unknown"** — audio-based key computation (chroma analysis) is a separate, lower-accuracy DSP feature deferred to post-MVP (see Roadmap Phase 5). This gets real key values for most DJ tracks (which are typically tagged) without taking on the risky part.
 - Duration, sample rate/bitrate (secondary info, e.g. an "info" expand panel).
 
 ### 6.3 Audio Analysis Pipeline (runs once per track, cached)
@@ -80,7 +107,8 @@ This is a **precompute-once, play-from-cache** design — no real-time DSP durin
 - **Lanes:** 4 fixed lanes at the bottom of the screen, one per marker type — Bass, Drums, Beats, Vocals — each with a distinct color and marker shape (e.g., Bass = red square, Drums = orange circle, Beats = yellow diamond, Vocals = blue triangle — exact palette TBD in design pass, must hold up in both light and dark mode).
 - **Marker flow:** markers spawn at the top of the screen and fall toward a hit line above the lane buttons, timed so they reach the line exactly when their corresponding sound occurs in the track (i.e., the fall duration is a fixed lead time, e.g. 2 seconds, giving the player a consistent reaction window).
 - **Input:** on-screen tap targets, one per lane, aligned under each lane. Player taps the correct lane's button as its marker crosses the hit line.
-- **Timing judgment:** each hit is scored against how close (in ms) the tap was to the marker's ideal timestamp:
+- **Note types:** MVP ships with **tap markers** (instantaneous hits). The marker data model, however, carries a `type`/`duration` field from the start so **hold/sustain notes** (tap-and-hold across a sustained bass or pad) and later **slide notes** can be added without reworking the schema — borrowed from Beatstar's note variety. Hold notes are a fast-follow, not MVP.
+- **Timing judgment:** each hit is scored against how close (in ms) the tap was to the marker's ideal timestamp, **after subtracting the per-device latency offset from calibration (see 6.7):**
   - **Perfect:** within ±30ms
   - **Good:** within ±80ms
   - **Bad:** within ±150ms
@@ -89,6 +117,11 @@ This is a **precompute-once, play-from-cache** design — no real-time DSP durin
 - **Scoring:** Perfect = 100 pts, Good = 50 pts, Bad = 10 pts, Miss = 0 and breaks combo. Consecutive non-miss hits build a combo multiplier (e.g., +10% per 10-combo, capped) to reward sustained accuracy.
 - **Session flow:** pick a track → short countdown → track plays back while markers fall → results screen at the end showing score, accuracy %, max combo, per-lane breakdown (helps a DJ see e.g. "I'm weak on catching vocal entries").
 - **Playback control:** pause/resume; a track can be replayed anytime from the library.
+
+### 6.7 Latency Calibration (MVP requirement)
+- A one-time (re-runnable) **calibration screen** measures the combined audio-output + display + input latency of the specific device and stores a per-device offset in ms.
+- Flow: the player taps along to a simple steady beat; the app computes the average offset between the beat and their taps and applies it to all future timing judgments.
+- **Why it's in MVP, not optional:** device audio/display/touch latency varies widely and directly corrupts a timing-sensitive game — without calibration, "Perfect" hits register as "Good/Bad" on slower devices and the game feels broken. This is the single most-copied lesson from Cytoid. Prompted during onboarding and accessible anytime from Settings.
 
 ## 7. Permissions & Privacy
 
@@ -118,9 +151,9 @@ This is a **precompute-once, play-from-cache** design — no real-time DSP durin
 - **Phase 0 — Technical spike:** Validate folder access on both platforms and validate the native audio decode → FFT → BPM/onset pipeline end-to-end on one sample track each platform. This phase de-risks the whole project before UI work starts.
 - **Phase 1 — Library foundation:** Folder import, file scanning, metadata/artwork extraction, library list UI, light/dark theme shell.
 - **Phase 2 — Analysis pipeline:** Full BPM detection, waveform + RGB band extraction, onset/marker generation, local caching, per-track analysis progress UI.
-- **Phase 3 — Core gameplay:** Lane rendering, falling markers, hit-line input handling, timing judgment, scoring, results screen.
-- **Phase 4 — Polish:** Animations/juice, RGB waveform backdrop during play, settings screen, onboarding/permission flow, empty states.
-- **Phase 5 — Post-MVP (not in initial build):** Loop/practice mode, slow-down practice speed, per-track cue-point notes, difficulty tiers, additional marker types.
+- **Phase 3 — Core gameplay:** Lane rendering, falling markers, hit-line input handling, **latency calibration screen (6.7)**, timing judgment, scoring, results screen.
+- **Phase 4 — Polish:** Animations/juice, RGB waveform backdrop during play, settings screen (incl. re-run calibration), onboarding/permission flow, empty states.
+- **Phase 5 — Post-MVP (not in initial build):** Hold/sustain & slide note types, audio-based key detection (chroma analysis) for untagged tracks, loop/practice mode, slow-down practice speed, per-track cue-point notes, difficulty tiers, additional marker types.
 
 ## 11. Success Metrics (informal, since this is a personal/indie project)
 
@@ -128,10 +161,15 @@ This is a **precompute-once, play-from-cache** design — no real-time DSP durin
 - Markers "feel" aligned with what a listener actually hears (subjective playtesting pass against a handful of known tracks).
 - A full play session (import → analyze → play → see results) works end-to-end offline on both a real iOS and real Android device.
 
+### Resolved decisions
+- **BPM:** Kept for MVP (detect from audio + read tag when present). Low risk.
+- **Key:** Read-from-tag only for MVP; show "Unknown" when untagged. Audio-based key detection deferred to Phase 5.
+- **Latency calibration:** Promoted into MVP (Phase 3) as a requirement.
+- **Note types:** MVP = tap only, but marker schema supports hold/slide for a post-MVP fast-follow.
+
 ## 12. Open Questions
 
-1. **Untagged key detection:** if a track has no embedded key tag, should MVP attempt audio-based key detection (chroma/pitch-class analysis), or just show "Unknown" and leave key detection as post-MVP? *(Leaning: show "Unknown" for MVP — audio key detection is a second nontrivial DSP feature on top of BPM/onsets.)*
-2. **Difficulty tiers:** one fixed timing-window difficulty, or Easy/Normal/Hard with different marker density and timing windows?
+1. **Difficulty tiers:** one fixed timing-window difficulty, or Easy/Normal/Hard with different marker density and timing windows?
 3. **Marker density/genre handling:** should marker density scale with track complexity (e.g., fewer markers for sparse ambient tracks, more for dense drum & bass), or a fixed target markers-per-minute regardless of genre?
 4. **Device support floor:** any minimum OS version / device age to target, given the DSP workload (affects how conservative the analysis pipeline needs to be)?
 5. **Naming:** working title is "DJ Rhythm Trainer" — do you have an actual app name in mind?
