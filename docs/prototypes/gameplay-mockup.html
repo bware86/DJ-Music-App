@@ -1,0 +1,1014 @@
+<title>CueDrop — Gameplay Prototype</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:        #08080f;
+    --bg-1:      #0d0d18;
+    --bg-panel:  #111120;
+    --bg-elev:   #16172a;
+    --line:      #24263c;
+    --line-soft: #1a1b2c;
+    --text:      #eef0f8;
+    --text-dim:  #9092ad;
+    --text-faint:#565877;
+
+    --low:  #ff2d55;  /* Bass   */
+    --mid:  #1fdd92;  /* Melody */
+    --high: #2e8bff;  /* Hats   */
+    --vox:  #ffc93c;  /* Vocals */
+
+    --perfect: #4dd8ff;
+    --good:    #1fdd92;
+    --bad:     #ff9d3c;
+    --miss:    #ff3b5c;
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    --lead: 1800ms; /* marker fall time, mirrors PRD lead time */
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: var(--sans);
+    color: var(--text);
+    background:
+      radial-gradient(120% 80% at 50% -10%, #16183020 0%, transparent 60%),
+      radial-gradient(90% 60% at 50% 120%, #1a0f2410 0%, transparent 55%),
+      var(--bg);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  .wrap {
+    position: relative;
+    width: min(560px, 100vw);
+    height: min(940px, 100vh);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg) 55%);
+    border-left: 1px solid var(--line-soft);
+    border-right: 1px solid var(--line-soft);
+    overflow: hidden;
+  }
+
+  /* ---------- Track bar ---------- */
+  .trackbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--line-soft);
+    background: linear-gradient(180deg, #0e0f1ccc, #0e0f1c66);
+  }
+  .art {
+    width: 46px; height: 46px; flex: none;
+    border-radius: 9px;
+    background:
+      conic-gradient(from 210deg at 50% 50%, var(--low), var(--vox), var(--mid), var(--high), var(--low));
+    position: relative;
+    box-shadow: 0 4px 18px #0008, inset 0 0 0 1px #ffffff18;
+    overflow: hidden;
+  }
+  .art::after {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(60% 60% at 30% 25%, #ffffff35, transparent 60%),
+                radial-gradient(circle at 50% 50%, transparent 34%, #0b0b14 35%, #0b0b14 40%, transparent 41%);
+  }
+  .art::before {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: 6px; height: 6px; margin: -3px 0 0 -3px;
+    background: #0b0b14; border-radius: 50%; z-index: 2;
+    box-shadow: 0 0 0 2px #ffffff22;
+  }
+  .track-meta { min-width: 0; flex: 1; }
+  .track-title {
+    font-size: 15px; font-weight: 700; letter-spacing: -0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .track-artist {
+    font-size: 12px; color: var(--text-dim); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .track-tags {
+    display: flex; gap: 6px; align-items: stretch; flex: none;
+    font-family: var(--mono);
+  }
+  .tag {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 5px 9px; border-radius: 7px;
+    background: #ffffff08; border: 1px solid var(--line);
+    line-height: 1;
+  }
+  .tag b { font-size: 14px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .tag span { font-size: 8px; color: var(--text-faint); letter-spacing: 0.14em; margin-top: 4px; }
+
+  /* ---------- HUD ---------- */
+  .hud {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: end;
+    padding: 12px 18px 10px;
+    font-family: var(--mono);
+  }
+  .hud .cell { display: flex; flex-direction: column; gap: 3px; }
+  .hud .cell.mid { align-items: center; }
+  .hud .cell.right { align-items: flex-end; }
+  .hud .label { font-size: 8.5px; letter-spacing: 0.18em; color: var(--text-faint); }
+  .hud .score {
+    font-size: 30px; font-weight: 700; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; line-height: 0.95;
+  }
+  .hud .combo {
+    font-size: 26px; font-weight: 700; line-height: 0.95;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    transition: transform .08s ease;
+  }
+  .hud .combo small { font-size: 12px; color: var(--text-dim); font-weight: 700; }
+  .hud .combo.pop { transform: scale(1.22); }
+  .hud .acc { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* ---------- Stage ---------- */
+  .stage {
+    position: relative;
+    flex: 1;
+    margin: 4px 12px 0;
+    border-radius: 14px 14px 0 0;
+    background:
+      linear-gradient(180deg, #0a0b16 0%, #090a13 70%, #0c0d1a 100%);
+    border: 1px solid var(--line-soft);
+    border-bottom: none;
+    overflow: hidden;
+  }
+  .lanes { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .lane {
+    position: relative;
+    border-right: 1px solid #ffffff08;
+  }
+  .lane:last-child { border-right: none; }
+  .lane .glow {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, var(--c) 0%, transparent 24%);
+    opacity: 0.06;
+    pointer-events: none;
+  }
+  .lane .beam {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent, var(--c));
+    opacity: 0; pointer-events: none;
+    transition: opacity .05s ease;
+  }
+  .lane.flash .beam { opacity: 0.18; transition: opacity .28s ease; }
+  .markerlayer { position: absolute; inset: 0; pointer-events: none; }
+
+  .marker {
+    position: absolute; left: 50%; top: 0;
+    width: 54px; height: 54px; margin-left: -27px;
+    will-change: transform;
+    filter: drop-shadow(0 0 10px var(--c));
+  }
+  .marker .body {
+    width: 100%; height: 100%;
+    background: linear-gradient(160deg, color-mix(in srgb, var(--c) 78%, white) 0%, var(--c) 55%, color-mix(in srgb, var(--c) 62%, black) 100%);
+    box-shadow: inset 0 0 0 1.5px #ffffff40, inset 0 6px 10px #ffffff28;
+  }
+  .marker.square  .body { border-radius: 12px; }
+  .marker.circle  .body { border-radius: 50%; }
+  .marker.triangle .body { clip-path: polygon(50% 6%, 96% 92%, 4% 92%); }
+  .marker.diamond .body { clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%); }
+
+  /* hit line */
+  .hitline {
+    position: absolute; left: 0; right: 0; bottom: 96px; height: 0;
+    z-index: 3; pointer-events: none;
+  }
+  .hitline .bar {
+    position: absolute; left: 8px; right: 8px; top: -1px; height: 2px;
+    background: linear-gradient(90deg, transparent, #ffffff55 12%, #ffffff88 50%, #ffffff55 88%, transparent);
+  }
+  .hitzone {
+    position: absolute; left: 0; right: 0; bottom: 74px; height: 44px;
+    z-index: 2; pointer-events: none;
+    background: linear-gradient(180deg, transparent, #ffffff0c 45%, #ffffff0c 55%, transparent);
+    border-top: 1px solid #ffffff14; border-bottom: 1px solid #ffffff14;
+  }
+  .target {
+    position: absolute; bottom: 74px; height: 44px; z-index: 4;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .target .ring {
+    width: 46px; height: 46px; border-radius: 12px;
+    border: 2px solid var(--c); opacity: 0.4;
+    box-shadow: 0 0 14px var(--c) inset;
+  }
+  .target.circle .ring { border-radius: 50%; }
+
+  /* hit burst */
+  .burst {
+    position: absolute; z-index: 6; width: 54px; height: 54px; margin-left: -27px;
+    border-radius: 50%; pointer-events: none;
+    border: 2px solid var(--c);
+    animation: burst .38s ease-out forwards;
+  }
+  @keyframes burst {
+    from { transform: scale(0.5); opacity: 0.9; }
+    to   { transform: scale(2.1); opacity: 0; }
+  }
+
+  /* judgment flash */
+  .judge {
+    position: absolute; left: 0; right: 0; bottom: 150px; z-index: 7;
+    text-align: center; pointer-events: none;
+    font-weight: 800; letter-spacing: 0.04em;
+    font-size: 30px; opacity: 0;
+  }
+  .judge .ms { display: block; font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.1em; margin-top: 2px; color: var(--text-dim); }
+  .judge.show { animation: judge .42s ease-out; }
+  @keyframes judge {
+    0%   { opacity: 0; transform: translateY(8px) scale(0.9); }
+    30%  { opacity: 1; transform: translateY(0) scale(1.05); }
+    100% { opacity: 0; transform: translateY(-6px) scale(1); }
+  }
+
+  /* ---------- Controls ---------- */
+  .controls {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 8px; padding: 12px 12px 10px;
+  }
+  .pad {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; gap: 7px;
+    padding: 12px 4px 10px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #14152480, #0e0f1a80);
+    border: 1px solid var(--line);
+    cursor: pointer; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform .06s ease, background .12s ease, box-shadow .12s ease;
+  }
+  .pad:active, .pad.down {
+    transform: translateY(2px);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--c) 26%, #14152480), #0e0f1a90);
+    box-shadow: 0 0 18px -2px var(--c), inset 0 0 0 1px color-mix(in srgb, var(--c) 60%, transparent);
+  }
+  .pad .glyph { width: 26px; height: 26px; filter: drop-shadow(0 0 6px var(--c)); }
+  .pad .glyph i { display: block; width: 100%; height: 100%;
+    background: linear-gradient(160deg, color-mix(in srgb, var(--c) 80%, white), var(--c)); }
+  .pad.square  .glyph i { border-radius: 7px; }
+  .pad.circle  .glyph i { border-radius: 50%; }
+  .pad.triangle .glyph i { clip-path: polygon(50% 6%, 96% 92%, 4% 92%); }
+  .pad.diamond .glyph i { clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%); }
+  .pad .name { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; }
+  .pad .sub  { font-size: 9px; color: var(--text-dim); letter-spacing: 0.04em; }
+  .pad .key {
+    font-family: var(--mono); font-size: 9px; color: var(--text-faint);
+    border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; margin-top: 1px;
+    letter-spacing: 0.1em;
+  }
+
+  /* ---------- Waveform strip ---------- */
+  .wavewrap { padding: 0 12px 12px; }
+  .wave-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.14em;
+    color: var(--text-faint); margin-bottom: 5px; padding: 0 2px;
+  }
+  canvas.wave {
+    display: block; width: 100%; height: 48px;
+    border-radius: 8px; background: #0a0b14;
+    border: 1px solid var(--line-soft);
+  }
+
+  /* ---------- Overlays ---------- */
+  .overlay {
+    position: absolute; inset: 0; z-index: 20;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    padding: 28px;
+    background: radial-gradient(90% 70% at 50% 30%, #0d0e1cf2, #06060cf7 70%, #06060cfc);
+    backdrop-filter: blur(3px);
+    text-align: center;
+  }
+  .overlay.hidden { display: none; }
+
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .brand .dots { display: flex; gap: 5px; }
+  .brand .dots i { width: 11px; height: 11px; border-radius: 3px; filter: drop-shadow(0 0 6px currentColor); }
+  .brand .dots i:nth-child(1){ background: var(--low);  color: var(--low); }
+  .brand .dots i:nth-child(2){ background: var(--mid);  color: var(--mid); border-radius: 50%; }
+  .brand .dots i:nth-child(3){ background: var(--high); color: var(--high); clip-path: polygon(50% 6%, 96% 92%, 4% 92%); }
+  .brand .dots i:nth-child(4){ background: var(--vox);  color: var(--vox); clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%); }
+  .title {
+    font-size: 44px; font-weight: 800; letter-spacing: -0.03em; line-height: 1;
+    text-wrap: balance;
+  }
+  .title .drop { color: var(--vox); }
+  .tagline { color: var(--text-dim); font-size: 13px; margin-top: 10px; max-width: 34ch; text-wrap: balance; }
+  .working { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; color: var(--text-faint); margin-top: 14px; }
+
+  .legend {
+    display: grid; grid-template-columns: repeat(2, auto); gap: 8px 20px;
+    margin: 22px 0 6px; padding: 14px 18px;
+    border: 1px solid var(--line); border-radius: 12px; background: #ffffff05;
+  }
+  .legend .row { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+  .legend .sw { width: 15px; height: 15px; filter: drop-shadow(0 0 5px var(--c)); }
+  .legend .sw.square  { border-radius: 4px; background: var(--c); }
+  .legend .sw.circle  { border-radius: 50%; background: var(--c); }
+  .legend .sw.triangle{ background: var(--c); clip-path: polygon(50% 6%, 96% 92%, 4% 92%); }
+  .legend .sw.diamond { background: var(--c); clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%); }
+  .legend .row b { font-weight: 700; }
+  .legend .row span { color: var(--text-dim); }
+
+  .difficulty { margin: 18px 0 4px; }
+  .difficulty .dlabel { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; color: var(--text-faint); margin-bottom: 8px; }
+  .seg { display: inline-flex; padding: 4px; gap: 4px; border-radius: 11px; background: #ffffff08; border: 1px solid var(--line); }
+  .seg button {
+    font-family: var(--sans); font-size: 12.5px; font-weight: 700; letter-spacing: 0.02em;
+    color: var(--text-dim); background: transparent; border: none; cursor: pointer;
+    padding: 8px 18px; border-radius: 8px; transition: all .14s ease;
+  }
+  .seg button[aria-pressed="true"] {
+    color: #08080f; background: var(--vox);
+    box-shadow: 0 0 16px -2px var(--vox);
+  }
+  .seg-detail { font-family: var(--mono); font-size: 10px; color: var(--text-faint); margin-top: 10px; height: 12px; letter-spacing: 0.04em; }
+
+  .btn {
+    margin-top: 24px;
+    font-family: var(--sans); font-size: 15px; font-weight: 800; letter-spacing: 0.02em;
+    color: #08080f;
+    background: linear-gradient(180deg, #ffffff, #d7dbe8);
+    border: none; border-radius: 12px; padding: 15px 40px; cursor: pointer;
+    box-shadow: 0 6px 24px -6px #ffffff50;
+    transition: transform .08s ease, box-shadow .14s ease;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 30px -8px #ffffff60; }
+  .btn:active { transform: translateY(1px); }
+  .hint { font-family: var(--mono); font-size: 9.5px; color: var(--text-faint); margin-top: 16px; letter-spacing: 0.06em; }
+
+  .note {
+    position: absolute; bottom: 12px; left: 0; right: 0;
+    text-align: center; font-family: var(--mono); font-size: 8.5px;
+    color: #3a3c54; letter-spacing: 0.1em;
+  }
+
+  /* countdown */
+  .count {
+    position: absolute; inset: 0; z-index: 30; display: none;
+    align-items: center; justify-content: center;
+    font-size: 120px; font-weight: 800; color: #fff;
+    text-shadow: 0 0 40px #4dd8ff90;
+    pointer-events: none;
+  }
+  .count.show { display: flex; }
+  .count b { animation: cnt .6s ease-out; }
+  @keyframes cnt { from { transform: scale(1.8); opacity: 0; } 40% { opacity: 1; } to { transform: scale(0.7); opacity: 0; } }
+
+  /* results */
+  .results h2 { font-size: 13px; letter-spacing: 0.2em; color: var(--text-faint); font-family: var(--mono); font-weight: 600; }
+  .results .grade { font-size: 88px; font-weight: 800; line-height: 1; margin: 6px 0 4px; letter-spacing: -0.03em; }
+  .results .fscore { font-family: var(--mono); font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .results .fmeta { display: flex; gap: 26px; margin: 16px 0 4px; font-family: var(--mono); }
+  .results .fmeta .m { display: flex; flex-direction: column; gap: 3px; }
+  .results .fmeta .m b { font-size: 19px; font-variant-numeric: tabular-nums; }
+  .results .fmeta .m span { font-size: 8.5px; letter-spacing: 0.14em; color: var(--text-faint); }
+  .lanebreak { width: 100%; max-width: 320px; margin: 20px 0 4px; display: flex; flex-direction: column; gap: 9px; }
+  .lanebreak .lb { display: grid; grid-template-columns: 46px 1fr 42px; align-items: center; gap: 10px; }
+  .lanebreak .lb .n { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; color: var(--text-dim); text-align: left; }
+  .lanebreak .lb .track { height: 7px; border-radius: 4px; background: #ffffff10; overflow: hidden; }
+  .lanebreak .lb .fill { height: 100%; background: var(--c); border-radius: 4px; box-shadow: 0 0 8px var(--c); width: 0; transition: width .6s ease; }
+  .lanebreak .lb .pct { font-family: var(--mono); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .burst { animation: none; display: none; }
+    .judge.show { animation-duration: .01ms; opacity: 0; }
+    .count b { animation: none; }
+  }
+</style>
+
+<div class="wrap" id="wrap">
+
+  <!-- Track bar -->
+  <div class="trackbar">
+    <div class="art" aria-hidden="true"></div>
+    <div class="track-meta">
+      <div class="track-title">Nocturne Transit</div>
+      <div class="track-artist">Kova &middot; Afterhours EP</div>
+    </div>
+    <div class="track-tags">
+      <div class="tag"><b>128</b><span>BPM</span></div>
+      <div class="tag"><b>8A</b><span>KEY</span></div>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div class="hud">
+    <div class="cell">
+      <div class="label">SCORE</div>
+      <div class="score" id="score">0</div>
+    </div>
+    <div class="cell mid">
+      <div class="label">COMBO</div>
+      <div class="combo" id="combo">0<small>x</small></div>
+    </div>
+    <div class="cell right">
+      <div class="label">ACCURACY</div>
+      <div class="acc" id="acc">100.0%</div>
+    </div>
+  </div>
+
+  <!-- Stage -->
+  <div class="stage" id="stage">
+    <div class="lanes" id="lanes"></div>
+    <div class="hitzone"></div>
+    <div class="hitline"><div class="bar"></div></div>
+    <div class="judge" id="judge"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls" id="controls"></div>
+
+  <!-- Waveform -->
+  <div class="wavewrap">
+    <div class="wave-head"><span>RGB WAVEFORM &mdash; LOW / MID / HIGH + VOX</span><span id="wave-time">00:00</span></div>
+    <canvas class="wave" id="wave" width="1072" height="96"></canvas>
+  </div>
+
+  <!-- Countdown -->
+  <div class="count" id="count"><b id="countnum">3</b></div>
+
+  <!-- Start overlay -->
+  <div class="overlay" id="start">
+    <div class="brand"><span class="dots"><i></i><i></i><i></i><i></i></span></div>
+    <div class="title">Cue<span class="drop">Drop</span></div>
+    <div class="tagline">Learn your tracks by ear. Markers fall in time with the music &mdash; hit each lane as the sound lands.</div>
+
+    <div class="legend">
+      <div class="row" style="--c:var(--low)"><span class="sw square"></span><b>Low</b>&nbsp;<span>Bass</span></div>
+      <div class="row" style="--c:var(--mid)"><span class="sw circle"></span><b>Mid</b>&nbsp;<span>Melody</span></div>
+      <div class="row" style="--c:var(--high)"><span class="sw triangle"></span><b>High</b>&nbsp;<span>Hats</span></div>
+      <div class="row" style="--c:var(--vox)"><span class="sw diamond"></span><b>Vox</b>&nbsp;<span>Vocals</span></div>
+    </div>
+
+    <div class="difficulty">
+      <div class="dlabel">DIFFICULTY</div>
+      <div class="seg" id="seg" role="group" aria-label="Difficulty">
+        <button data-diff="easy" aria-pressed="false">Easy</button>
+        <button data-diff="normal" aria-pressed="true">Normal</button>
+        <button data-diff="hard" aria-pressed="false">Hard</button>
+      </div>
+      <div class="seg-detail" id="segdetail"></div>
+    </div>
+
+    <button class="btn" id="startbtn">Start</button>
+    <div class="hint">KEYS &nbsp;D &nbsp;F &nbsp;J &nbsp;K &nbsp;&middot;&nbsp; OR TAP THE PADS</div>
+    <div class="working">WORKING TITLE &middot; PROTOTYPE</div>
+  </div>
+
+  <!-- Results overlay -->
+  <div class="overlay hidden results" id="results">
+    <h2>SET COMPLETE</h2>
+    <div class="grade" id="grade">S</div>
+    <div class="fscore" id="fscore">0</div>
+    <div class="fmeta">
+      <div class="m"><b id="facc">0%</b><span>ACCURACY</span></div>
+      <div class="m"><b id="fcombo">0</b><span>MAX COMBO</span></div>
+      <div class="m"><b id="fperfect">0</b><span>PERFECT</span></div>
+    </div>
+    <div class="lanebreak" id="lanebreak"></div>
+    <button class="btn" id="again">Play again</button>
+    <div class="note">In-game view is intentionally dark. The app also ships a light theme for library &amp; browsing.</div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- Lane definitions (shared color system from the PRD) ----
+  const LANES = [
+    { id: "low",  name: "LOW",  sub: "Bass",   key: "d", shape: "square",   varc: "--low"  },
+    { id: "mid",  name: "MID",  sub: "Melody", key: "f", shape: "circle",   varc: "--mid"  },
+    { id: "high", name: "HIGH", sub: "Hats",   key: "j", shape: "triangle", varc: "--high" },
+    { id: "vox",  name: "VOX",  sub: "Vocals", key: "k", shape: "diamond",  varc: "--vox"  },
+  ];
+
+  const BPM = 128;
+  const SPB = 60 / BPM;              // seconds per beat
+  const STEP = SPB / 4;              // 16th-note grid
+  const LEAD = 1.8;                  // seconds a marker is airborne
+  const TOTAL_BARS = 24;            // demo length (~45s)
+
+  const DIFF = {
+    easy:   { perfect: 0.050, good: 0.120, bad: 0.200, label: "sparse markers · wide timing" },
+    normal: { perfect: 0.030, good: 0.080, bad: 0.150, label: "full pattern · standard timing" },
+    hard:   { perfect: 0.020, good: 0.050, bad: 0.100, label: "dense markers · tight timing" },
+  };
+
+  // 16-step patterns per difficulty. Arrays list which steps fire per lane.
+  const PATTERNS = {
+    easy: {
+      low:  [0, 4, 8, 12],
+      mid:  [],
+      high: [8],
+      vox:  [],           // phrase-based, added separately
+    },
+    normal: {
+      low:  [0, 4, 8, 12],
+      mid:  [6, 14],
+      high: [2, 6, 10, 14],
+      vox:  [],
+    },
+    hard: {
+      low:  [0, 4, 7, 8, 12, 14],
+      mid:  [3, 6, 11, 14],
+      high: [1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14],
+      vox:  [],
+    },
+  };
+
+  // ---- State ----
+  let ac = null;
+  let master = null;
+  let noiseBuf = null;
+  let diff = "normal";
+  let running = false;
+
+  let startTime = 0;      // ac time when bar 0 step 0 lands
+  let nextStep = 0;       // absolute 16th index to schedule next
+  const SCHEDULE_AHEAD = 0.18;
+  let schedTimer = null;
+
+  const markers = [];     // {lane, hitTime, node, judged}
+  let score = 0, combo = 0, maxCombo = 0;
+  let judged = 0, weightSum = 0;
+  const laneStats = {};   // id -> {hit, total}
+  let perfectCount = 0;
+
+  // ---- Build lane DOM ----
+  const lanesEl = document.getElementById("lanes");
+  const controlsEl = document.getElementById("controls");
+  const stageEl = document.getElementById("stage");
+  const laneNodes = {};
+  const markerLayers = {};
+  const padNodes = {};
+
+  LANES.forEach(function (L) {
+    const lane = document.createElement("div");
+    lane.className = "lane";
+    lane.style.setProperty("--c", "var(" + L.varc + ")");
+    lane.innerHTML =
+      '<div class="glow"></div><div class="beam"></div>' +
+      '<div class="markerlayer"></div>' +
+      '<div class="target ' + (L.shape === "circle" ? "circle" : "") + '"><div class="ring"></div></div>';
+    lanesEl.appendChild(lane);
+    laneNodes[L.id] = lane;
+    markerLayers[L.id] = lane.querySelector(".markerlayer");
+    laneStats[L.id] = { hit: 0, total: 0 };
+
+    const pad = document.createElement("div");
+    pad.className = "pad " + L.shape;
+    pad.style.setProperty("--c", "var(" + L.varc + ")");
+    pad.innerHTML =
+      '<span class="glyph"><i></i></span>' +
+      '<span class="name">' + L.name + '</span>' +
+      '<span class="sub">' + L.sub + '</span>' +
+      '<span class="key">' + L.key.toUpperCase() + '</span>';
+    pad.addEventListener("pointerdown", function (e) { e.preventDefault(); hit(L.id); });
+    controlsEl.appendChild(pad);
+    padNodes[L.id] = pad;
+  });
+
+  // position targets & judge line to match .hitline (bottom:96 in CSS -> here we align)
+  function layoutTargets() {
+    const laneW = stageEl.clientWidth / 4;
+    LANES.forEach(function (L, i) {
+      const t = laneNodes[L.id].querySelector(".target");
+      t.style.left = "0"; t.style.right = "0";
+    });
+  }
+
+  // hit line vertical position within stage (px from top)
+  function hitLineY() {
+    return stageEl.clientHeight - 96; // matches .hitline bottom:96px + target center approx
+  }
+
+  // ---- Audio ----
+  function initAudio() {
+    if (ac) return;
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    master = ac.createGain();
+    master.gain.value = 0.5;
+    master.connect(ac.destination);
+    // noise buffer for hats
+    const len = ac.sampleRate * 0.4;
+    noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  }
+
+  function env(g, t, a, dpeak, rel) {
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(dpeak, t + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + a + rel);
+  }
+
+  const SND = {
+    low: function (t) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(150, t);
+      o.frequency.exponentialRampToValueAtTime(48, t + 0.13);
+      env(g, t, 0.004, 0.95, 0.16);
+      o.connect(g).connect(master); o.start(t); o.stop(t + 0.22);
+    },
+    mid: function (t) {
+      const o = ac.createOscillator(), g = ac.createGain(), f = ac.createBiquadFilter();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(329.63, t); // E4
+      f.type = "lowpass"; f.frequency.value = 1600;
+      env(g, t, 0.006, 0.28, 0.20);
+      o.connect(f).connect(g).connect(master); o.start(t); o.stop(t + 0.26);
+    },
+    high: function (t) {
+      const s = ac.createBufferSource(), g = ac.createGain(), f = ac.createBiquadFilter();
+      s.buffer = noiseBuf; f.type = "highpass"; f.frequency.value = 7200;
+      env(g, t, 0.002, 0.22, 0.045);
+      s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.08);
+    },
+    vox: function (t) {
+      const o1 = ac.createOscillator(), o2 = ac.createOscillator(),
+            g = ac.createGain(), f = ac.createBiquadFilter();
+      o1.type = "sawtooth"; o2.type = "sawtooth";
+      o1.frequency.setValueAtTime(440, t); o2.frequency.setValueAtTime(442.5, t);
+      f.type = "bandpass"; f.frequency.value = 1000; f.Q.value = 5;
+      env(g, t, 0.05, 0.22, 0.45);
+      o1.connect(f); o2.connect(f); f.connect(g).connect(master);
+      o1.start(t); o2.start(t); o1.stop(t + 0.6); o2.stop(t + 0.6);
+    },
+  };
+
+  // ---- Scheduler ----
+  function patternForStep(step, bar) {
+    const p = PATTERNS[diff];
+    const fired = [];
+    LANES.forEach(function (L) {
+      if (p[L.id].indexOf(step) !== -1) fired.push(L.id);
+    });
+    // Vox phrasing: start of every 4th bar (normal/hard), every 8th (easy)
+    if (step === 0) {
+      const every = diff === "easy" ? 8 : 4;
+      if (bar % every === 0 && bar > 0) fired.push("vox");
+    }
+    // Hard: extra vox stab mid-phrase
+    if (diff === "hard" && step === 8 && bar % 4 === 2) fired.push("vox");
+    return fired;
+  }
+
+  function scheduler() {
+    while (nextStep * STEP < ac.currentTime - startTime + SCHEDULE_AHEAD) {
+      const stepAbs = nextStep;
+      const bar = Math.floor(stepAbs / 16);
+      const step = stepAbs % 16;
+      const t = startTime + stepAbs * STEP;
+
+      if (bar < TOTAL_BARS) {
+        const fired = patternForStep(step, bar);
+        fired.forEach(function (id) {
+          SND[id](t);
+          spawnMarker(id, t);
+        });
+      }
+      nextStep++;
+
+      if (bar >= TOTAL_BARS) {
+        // let tail markers resolve, then finish
+        if (markers.length === 0) { finish(); return; }
+      }
+    }
+    schedTimer = setTimeout(scheduler, 25);
+  }
+
+  function spawnMarker(id, hitTime) {
+    const L = LANES.find(function (x) { return x.id === id; });
+    const node = document.createElement("div");
+    node.className = "marker " + L.shape;
+    node.style.setProperty("--c", "var(" + L.varc + ")");
+    node.innerHTML = '<div class="body"></div>';
+    markerLayers[id].appendChild(node);
+    const m = { lane: id, hitTime: hitTime, node: node, judged: false };
+    markers.push(m);
+    laneStats[id].total++;
+  }
+
+  // ---- Game loop (visual) ----
+  function frame() {
+    if (!running) return;
+    const now = ac.currentTime;
+    const lineY = hitLineY();
+    for (let i = markers.length - 1; i >= 0; i--) {
+      const m = markers[i];
+      if (m.judged) continue;
+      const progress = (now - (m.hitTime - LEAD)) / LEAD; // 0 at top, 1 at line
+      const y = progress * lineY;
+      m.node.style.transform = "translateY(" + y + "px)";
+      // miss if passed beyond bad window
+      if (now - m.hitTime > DIFF[diff].bad + 0.02) {
+        registerMiss(m);
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---- Judgment ----
+  function hit(id) {
+    if (!running) return;
+    flashPad(id);
+    laneNodes[id].classList.add("flash");
+    setTimeout(function () { laneNodes[id].classList.remove("flash"); }, 120);
+
+    const now = ac.currentTime;
+    // nearest unjudged marker in this lane within bad window
+    let best = null, bestAbs = Infinity;
+    for (let i = 0; i < markers.length; i++) {
+      const m = markers[i];
+      if (m.judged || m.lane !== id) continue;
+      const dt = Math.abs(now - m.hitTime);
+      if (dt < bestAbs) { bestAbs = dt; best = m; }
+    }
+    if (!best || bestAbs > DIFF[diff].bad) return; // no penalty for empty taps
+    resolveHit(best, (now - best.hitTime) * 1000, bestAbs);
+  }
+
+  function resolveHit(m, deltaMs, abs) {
+    m.judged = true;
+    const w = DIFF[diff];
+    let kind, pts, weight;
+    if (abs <= w.perfect)      { kind = "PERFECT"; pts = 100; weight = 1.0;  perfectCount++; }
+    else if (abs <= w.good)    { kind = "GOOD";    pts = 50;  weight = 0.6;  }
+    else                       { kind = "BAD";     pts = 10;  weight = 0.25; }
+
+    combo++; if (combo > maxCombo) maxCombo = combo;
+    const mult = Math.min(2, 1 + Math.floor(combo / 10) * 0.1);
+    score += Math.round(pts * mult);
+    judged++; weightSum += weight;
+    laneStats[m.lane].hit++;
+
+    burst(m);
+    showJudge(kind, deltaMs);
+    removeMarker(m);
+    updateHUD(true);
+  }
+
+  function registerMiss(m) {
+    m.judged = true;
+    combo = 0;
+    judged++; weightSum += 0;
+    showJudge("MISS", null);
+    removeMarker(m);
+    updateHUD(false);
+  }
+
+  function removeMarker(m) {
+    const idx = markers.indexOf(m);
+    if (idx !== -1) markers.splice(idx, 1);
+    if (m.node && m.node.parentNode) {
+      if (m.judged && document.body) m.node.style.opacity = "0";
+      m.node.parentNode.removeChild(m.node);
+    }
+  }
+
+  // ---- FX ----
+  const judgeColors = { PERFECT: "var(--perfect)", GOOD: "var(--good)", BAD: "var(--bad)", MISS: "var(--miss)" };
+  const judgeEl = document.getElementById("judge");
+  function showJudge(kind, deltaMs) {
+    judgeEl.style.color = judgeColors[kind];
+    let ms = "";
+    if (deltaMs != null) {
+      const sign = deltaMs >= 0 ? "+" : "−";
+      ms = '<span class="ms">' + sign + Math.abs(Math.round(deltaMs)) + " ms" +
+           (deltaMs >= 0 ? " late" : " early") + "</span>";
+    }
+    judgeEl.innerHTML = kind + ms;
+    judgeEl.classList.remove("show"); void judgeEl.offsetWidth; judgeEl.classList.add("show");
+  }
+  function burst(m) {
+    const L = LANES.find(function (x) { return x.id === m.lane; });
+    const b = document.createElement("div");
+    b.className = "burst";
+    b.style.setProperty("--c", "var(" + L.varc + ")");
+    b.style.left = "50%";
+    b.style.bottom = "74px";
+    markerLayers[m.lane].parentNode.appendChild(b);
+    setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 400);
+  }
+  function flashPad(id) {
+    const p = padNodes[id];
+    p.classList.add("down");
+    setTimeout(function () { p.classList.remove("down"); }, 90);
+  }
+
+  // ---- HUD ----
+  const scoreEl = document.getElementById("score");
+  const comboEl = document.getElementById("combo");
+  const accEl = document.getElementById("acc");
+  function updateHUD(good) {
+    scoreEl.textContent = score.toLocaleString();
+    comboEl.innerHTML = combo + '<small>x</small>';
+    if (good) { comboEl.classList.add("pop"); setTimeout(function () { comboEl.classList.remove("pop"); }, 90); }
+    const acc = judged ? (weightSum / judged) * 100 : 100;
+    accEl.textContent = acc.toFixed(1) + "%";
+    accEl.style.color = acc >= 90 ? "var(--perfect)" : acc >= 70 ? "var(--text)" : "var(--bad)";
+  }
+
+  // ---- Waveform strip ----
+  const wave = document.getElementById("wave");
+  const wctx = wave.getContext("2d");
+  const WCOLS = 268;
+  const waveData = [];
+  (function genWave() {
+    for (let i = 0; i < WCOLS; i++) {
+      const t = i / WCOLS;
+      const build = 0.35 + 0.65 * Math.pow(Math.sin(t * Math.PI), 0.6);
+      const low = build * (0.55 + 0.45 * Math.abs(Math.sin(t * 34)));
+      const mid = build * (0.35 + 0.4 * Math.abs(Math.sin(t * 19 + 1))) * (0.4 + 0.6 * t);
+      const high = build * (0.3 + 0.5 * Math.abs(Math.sin(t * 61 + 2)));
+      // vox present in choruses (two regions)
+      const vox = ((t > 0.28 && t < 0.42) || (t > 0.66 && t < 0.86)) ? 0.7 + 0.3 * Math.abs(Math.sin(t * 40)) : 0;
+      waveData.push({ low: low, mid: mid, high: high, vox: vox });
+    }
+  })();
+
+  const css = getComputedStyle(document.documentElement);
+  const COL = {
+    low: css.getPropertyValue("--low").trim(),
+    mid: css.getPropertyValue("--mid").trim(),
+    high: css.getPropertyValue("--high").trim(),
+    vox: css.getPropertyValue("--vox").trim(),
+  };
+
+  function drawWave(progress) {
+    const W = wave.width, H = wave.height, mid = H / 2;
+    wctx.clearRect(0, 0, W, H);
+    const cw = W / WCOLS;
+    for (let i = 0; i < WCOLS; i++) {
+      const d = waveData[i];
+      const x = i * cw;
+      const played = (i / WCOLS) <= progress;
+      const alpha = played ? 1 : 0.28;
+      // stacked bars mirrored around center
+      const scale = mid * 0.92;
+      const lo = d.low * scale, md = d.mid * scale, hi = d.high * scale;
+      let y = mid;
+      wctx.globalAlpha = alpha;
+      wctx.fillStyle = COL.low;  wctx.fillRect(x, y - lo, cw + 0.5, lo);            // up
+      wctx.fillRect(x, y, cw + 0.5, lo);                                            // down
+      wctx.fillStyle = COL.mid;  wctx.fillRect(x, y - lo - md, cw + 0.5, md);
+      wctx.fillRect(x, y + lo, cw + 0.5, md);
+      wctx.fillStyle = COL.high; wctx.fillRect(x, y - lo - md - hi, cw + 0.5, hi);
+      wctx.fillRect(x, y + lo + md, cw + 0.5, hi);
+      if (d.vox > 0) {
+        wctx.fillStyle = COL.vox; wctx.globalAlpha = alpha * 0.9;
+        wctx.fillRect(x, H - 4, cw + 0.5, 3);
+        wctx.fillRect(x, 1, cw + 0.5, 3);
+      }
+    }
+    wctx.globalAlpha = 1;
+    // playhead
+    const px = progress * W;
+    wctx.fillStyle = "#ffffff";
+    wctx.fillRect(px - 1, 0, 2, H);
+    wctx.fillStyle = "#ffffff22";
+    wctx.fillRect(px, 0, W - px, H);
+  }
+  drawWave(0);
+
+  const waveTime = document.getElementById("wave-time");
+  function fmtTime(s) {
+    const m = Math.floor(s / 60), ss = Math.floor(s % 60);
+    return (m < 10 ? "0" : "") + m + ":" + (ss < 10 ? "0" : "") + ss;
+  }
+
+  function waveLoop() {
+    if (!running) return;
+    const elapsed = ac.currentTime - startTime;
+    const total = TOTAL_BARS * 4 * SPB;
+    const p = Math.max(0, Math.min(1, elapsed / total));
+    drawWave(p);
+    waveTime.textContent = fmtTime(Math.min(elapsed, total)) + " / " + fmtTime(total);
+    requestAnimationFrame(waveLoop);
+  }
+
+  // ---- Flow control ----
+  const startOverlay = document.getElementById("start");
+  const resultsOverlay = document.getElementById("results");
+  const countEl = document.getElementById("count");
+  const countNum = document.getElementById("countnum");
+
+  document.getElementById("seg").addEventListener("click", function (e) {
+    const b = e.target.closest("button"); if (!b) return;
+    diff = b.dataset.diff;
+    Array.prototype.forEach.call(this.querySelectorAll("button"), function (x) {
+      x.setAttribute("aria-pressed", x === b ? "true" : "false");
+    });
+    document.getElementById("segdetail").textContent = DIFF[diff].label;
+  });
+  document.getElementById("segdetail").textContent = DIFF["normal"].label;
+
+  document.getElementById("startbtn").addEventListener("click", begin);
+  document.getElementById("again").addEventListener("click", function () {
+    resultsOverlay.classList.add("hidden");
+    startOverlay.classList.remove("hidden");
+  });
+
+  function begin() {
+    initAudio();
+    if (ac.state === "suspended") ac.resume();
+    startOverlay.classList.add("hidden");
+    layoutTargets();
+    // reset state
+    markers.forEach(function (m) { if (m.node.parentNode) m.node.parentNode.removeChild(m.node); });
+    markers.length = 0;
+    score = 0; combo = 0; maxCombo = 0; judged = 0; weightSum = 0; perfectCount = 0;
+    LANES.forEach(function (L) { laneStats[L.id] = { hit: 0, total: 0 }; });
+    updateHUD(false);
+
+    // countdown
+    let c = 3;
+    countEl.classList.add("show"); countNum.textContent = c;
+    const ci = setInterval(function () {
+      c--;
+      if (c === 0) { countNum.textContent = "GO"; }
+      else if (c < 0) {
+        clearInterval(ci); countEl.classList.remove("show");
+        launch();
+      } else { countNum.textContent = c; }
+      countNum.style.animation = "none"; void countNum.offsetWidth; countNum.style.animation = "";
+    }, 700);
+  }
+
+  function launch() {
+    running = true;
+    startTime = ac.currentTime + 0.1;
+    nextStep = 0;
+    scheduler();
+    requestAnimationFrame(frame);
+    requestAnimationFrame(waveLoop);
+  }
+
+  function finish() {
+    running = false;
+    if (schedTimer) clearTimeout(schedTimer);
+    // final acc
+    const acc = judged ? (weightSum / judged) * 100 : 100;
+    document.getElementById("fscore").textContent = score.toLocaleString() + " pts";
+    document.getElementById("facc").textContent = acc.toFixed(1) + "%";
+    document.getElementById("fcombo").textContent = maxCombo;
+    document.getElementById("fperfect").textContent = perfectCount;
+    // grade
+    let grade = "D", gc = "var(--miss)";
+    if (acc >= 95) { grade = "S"; gc = "var(--perfect)"; }
+    else if (acc >= 88) { grade = "A"; gc = "var(--mid)"; }
+    else if (acc >= 78) { grade = "B"; gc = "var(--high)"; }
+    else if (acc >= 65) { grade = "C"; gc = "var(--vox)"; }
+    const gEl = document.getElementById("grade");
+    gEl.textContent = grade; gEl.style.color = gc;
+    // lane breakdown
+    const lb = document.getElementById("lanebreak");
+    lb.innerHTML = "";
+    LANES.forEach(function (L) {
+      const s = laneStats[L.id];
+      const pct = s.total ? Math.round((s.hit / s.total) * 100) : 0;
+      const row = document.createElement("div");
+      row.className = "lb"; row.style.setProperty("--c", "var(" + L.varc + ")");
+      row.innerHTML =
+        '<div class="n">' + L.name + '</div>' +
+        '<div class="track"><div class="fill"></div></div>' +
+        '<div class="pct">' + pct + '%</div>';
+      lb.appendChild(row);
+      requestAnimationFrame(function () { row.querySelector(".fill").style.width = pct + "%"; });
+    });
+    resultsOverlay.classList.remove("hidden");
+  }
+
+  // keyboard
+  const keyMap = {};
+  LANES.forEach(function (L) { keyMap[L.key] = L.id; });
+  window.addEventListener("keydown", function (e) {
+    if (e.repeat) return;
+    const id = keyMap[e.key.toLowerCase()];
+    if (id) { e.preventDefault(); hit(id); }
+    else if (e.key === "Enter" && !startOverlay.classList.contains("hidden")) begin();
+  });
+
+  window.addEventListener("resize", layoutTargets);
+})();
+</script>
