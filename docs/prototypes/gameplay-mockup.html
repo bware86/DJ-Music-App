@@ -503,7 +503,7 @@
   const BPM = 128;
   const SPB = 60 / BPM;              // seconds per beat
   const STEP = SPB / 4;              // 16th-note grid
-  const LEAD = 1.8;                  // seconds a marker is airborne
+  const LEAD = 2.3;                  // seconds a marker is airborne (full-lane fall + setup time)
   const TOTAL_BARS = 24;            // demo length (~45s)
 
   const DIFF = {
@@ -512,27 +512,9 @@
     hard:   { perfect: 0.020, good: 0.050, bad: 0.100, label: "dense markers · tight timing" },
   };
 
-  // 16-step patterns per difficulty. Arrays list which steps fire per lane.
-  const PATTERNS = {
-    easy: {
-      low:  [0, 4, 8, 12],
-      mid:  [],
-      high: [8],
-      vox:  [],           // phrase-based, added separately
-    },
-    normal: {
-      low:  [0, 4, 8, 12],
-      mid:  [6, 14],
-      high: [2, 6, 10, 14],
-      vox:  [],
-    },
-    hard: {
-      low:  [0, 4, 7, 8, 12, 14],
-      mid:  [3, 6, 11, 14],
-      high: [1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14],
-      vox:  [],
-    },
-  };
+  // The backing groove (the "song") plays fully; only a sparse, musically
+  // chosen SUBSET becomes playable markers so the chart reads as the feel of
+  // the track rather than a transcription of every hit.
 
   // ---- State ----
   let ac = null;
@@ -543,7 +525,7 @@
 
   let startTime = 0;      // ac time when bar 0 step 0 lands
   let nextStep = 0;       // absolute 16th index to schedule next
-  const SCHEDULE_AHEAD = 0.18;
+  const SCHEDULE_AHEAD = LEAD + 0.3;  // spawn markers a full lead-time ahead so they fall from the top
   let schedTimer = null;
 
   const markers = [];     // {lane, hitTime, node, judged}
@@ -657,20 +639,37 @@
   };
 
   // ---- Scheduler ----
-  function patternForStep(step, bar) {
-    const p = PATTERNS[diff];
-    const fired = [];
-    LANES.forEach(function (L) {
-      if (p[L.id].indexOf(step) !== -1) fired.push(L.id);
-    });
-    // Vox phrasing: start of every 4th bar (normal/hard), every 8th (easy)
-    if (step === 0) {
-      const every = diff === "easy" ? 8 : 4;
-      if (bar % every === 0 && bar > 0) fired.push("vox");
-    }
-    // Hard: extra vox stab mid-phrase
-    if (diff === "hard" && step === 8 && bar % 4 === 2) fired.push("vox");
-    return fired;
+  // Full backing groove (plays every bar so the track feels complete).
+  function backingForStep(step, bar) {
+    const s = [];
+    const phrase = bar % 8;
+    const energy = phrase >= 4;                 // second half of a phrase is busier
+    if (step % 4 === 0) s.push("low");          // four-on-the-floor kick
+    if (step % 4 === 2) s.push("high");         // offbeat hats
+    if (energy && (step === 6 || step === 14)) s.push("high");
+    if (step === 6) s.push("mid");
+    if (energy && step === 12) s.push("mid");
+    if (bar >= 8 && phrase >= 4 && step === 0) s.push("vox"); // vocal pad in chorus
+    return s;
+  }
+
+  // Sparse markers: anchors + accents that represent the song's structure.
+  function markerForStep(step, bar) {
+    const m = [];
+    const phrase = bar % 8;
+    const busy = phrase >= 4;
+    // LOW — downbeat anchor, plus beat 3 in busier bars / on Hard
+    if (step === 0) m.push("low");
+    if (step === 8 && (busy || diff === "hard")) m.push("low");
+    // HIGH — the occasional offbeat lead-in accent (not every hat)
+    if (diff !== "easy" && step === 6 && busy) m.push("high");
+    if (diff === "hard" && step === 12 && busy) m.push("high");
+    // MID — melodic stab at the top of each 4-bar group
+    if (diff !== "easy" && step === 4 && (phrase === 0 || phrase === 4)) m.push("mid");
+    // VOX — vocal entries only (sparse, meaningful)
+    if (bar >= 8 && phrase === 4 && step === 0) m.push("vox");
+    if (diff === "hard" && bar >= 8 && phrase === 6 && step === 8) m.push("vox");
+    return m;
   }
 
   function scheduler() {
@@ -681,9 +680,11 @@
       const t = startTime + stepAbs * STEP;
 
       if (bar < TOTAL_BARS) {
-        const fired = patternForStep(step, bar);
-        fired.forEach(function (id) {
-          SND[id](t);
+        const back = backingForStep(step, bar);
+        back.forEach(function (id) { SND[id](t); });
+        const mk = markerForStep(step, bar);
+        mk.forEach(function (id) {
+          if (back.indexOf(id) === -1) SND[id](t); // ensure every marker is audible
           spawnMarker(id, t);
         });
       }
@@ -832,18 +833,25 @@
   // ---- Waveform strip ----
   const wave = document.getElementById("wave");
   const wctx = wave.getContext("2d");
-  const WCOLS = 268;
+  const WCOLS = 520;
   const waveData = [];
   (function genWave() {
     for (let i = 0; i < WCOLS; i++) {
       const t = i / WCOLS;
-      const build = 0.35 + 0.65 * Math.pow(Math.sin(t * Math.PI), 0.6);
-      const low = build * (0.55 + 0.45 * Math.abs(Math.sin(t * 34)));
-      const mid = build * (0.35 + 0.4 * Math.abs(Math.sin(t * 19 + 1))) * (0.4 + 0.6 * t);
-      const high = build * (0.3 + 0.5 * Math.abs(Math.sin(t * 61 + 2)));
-      // vox present in choruses (two regions)
-      const vox = ((t > 0.28 && t < 0.42) || (t > 0.66 && t < 0.86)) ? 0.7 + 0.3 * Math.abs(Math.sin(t * 40)) : 0;
-      waveData.push({ low: low, mid: mid, high: high, vox: vox });
+      // energy arc: intro -> build -> sustained peak -> outro dip
+      const arc = 0.28
+        + 0.55 * Math.pow(Math.sin(Math.min(1, t * 1.06) * Math.PI), 0.5)
+        + 0.14 * (t > 0.5 ? 1 : t / 0.5);
+      const transient = 0.6 + 0.4 * Math.abs(Math.sin(t * WCOLS * 0.21)); // fine per-column detail
+      const low  = arc * transient * (0.55 + 0.45 * Math.abs(Math.sin(t * 41)));
+      const mid  = arc * (0.30 + 0.45 * Math.abs(Math.sin(t * 23 + 1))) * (0.45 + 0.55 * t);
+      const high = arc * (0.25 + 0.55 * Math.abs(Math.sin(t * 97 + 2))) * (0.4 + 0.6 * transient);
+      // vox present in two chorus regions -> drawn as a highlight overlay
+      const vox = ((t > 0.30 && t < 0.44) || (t > 0.62 && t < 0.86))
+        ? 0.55 + 0.45 * Math.abs(Math.sin(t * 60)) : 0;
+      waveData.push({
+        low: Math.min(1, low), mid: Math.min(1, mid), high: Math.min(1, high), vox: vox
+      });
     }
   })();
 
@@ -859,35 +867,38 @@
     const W = wave.width, H = wave.height, mid = H / 2;
     wctx.clearRect(0, 0, W, H);
     const cw = W / WCOLS;
+    const bw = cw + 0.6;
+    const scale = mid * 0.94;
+    // frequency-stacked, mirrored around center (low core, mid, high on top)
     for (let i = 0; i < WCOLS; i++) {
       const d = waveData[i];
       const x = i * cw;
-      const played = (i / WCOLS) <= progress;
-      const alpha = played ? 1 : 0.28;
-      // stacked bars mirrored around center
-      const scale = mid * 0.92;
+      const alpha = (i / WCOLS) <= progress ? 1 : 0.22;
       const lo = d.low * scale, md = d.mid * scale, hi = d.high * scale;
-      let y = mid;
       wctx.globalAlpha = alpha;
-      wctx.fillStyle = COL.low;  wctx.fillRect(x, y - lo, cw + 0.5, lo);            // up
-      wctx.fillRect(x, y, cw + 0.5, lo);                                            // down
-      wctx.fillStyle = COL.mid;  wctx.fillRect(x, y - lo - md, cw + 0.5, md);
-      wctx.fillRect(x, y + lo, cw + 0.5, md);
-      wctx.fillStyle = COL.high; wctx.fillRect(x, y - lo - md - hi, cw + 0.5, hi);
-      wctx.fillRect(x, y + lo + md, cw + 0.5, hi);
-      if (d.vox > 0) {
-        wctx.fillStyle = COL.vox; wctx.globalAlpha = alpha * 0.9;
-        wctx.fillRect(x, H - 4, cw + 0.5, 3);
-        wctx.fillRect(x, 1, cw + 0.5, 3);
+      wctx.fillStyle = COL.low;  wctx.fillRect(x, mid - lo, bw, lo * 2);
+      wctx.fillStyle = COL.mid;  wctx.fillRect(x, mid - lo - md, bw, md);
+                                 wctx.fillRect(x, mid + lo, bw, md);
+      wctx.fillStyle = COL.high; wctx.fillRect(x, mid - lo - md - hi, bw, hi);
+                                 wctx.fillRect(x, mid + lo + md, bw, hi);
+    }
+    // vocal presence: gold highlight overlay over the chorus regions
+    for (let i = 0; i < WCOLS; i++) {
+      if (waveData[i].vox > 0) {
+        const x = i * cw;
+        const played = (i / WCOLS) <= progress ? 1 : 0.22;
+        wctx.globalAlpha = played * 0.16 * waveData[i].vox;
+        wctx.fillStyle = COL.vox;
+        wctx.fillRect(x, 0, bw, H);
       }
     }
     wctx.globalAlpha = 1;
-    // playhead
+    // playhead + dim the un-played remainder
     const px = progress * W;
+    wctx.fillStyle = "#05060c66";
+    wctx.fillRect(px, 0, W - px, H);
     wctx.fillStyle = "#ffffff";
     wctx.fillRect(px - 1, 0, 2, H);
-    wctx.fillStyle = "#ffffff22";
-    wctx.fillRect(px, 0, W - px, H);
   }
   drawWave(0);
 
