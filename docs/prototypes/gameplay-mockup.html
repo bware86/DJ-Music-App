@@ -279,6 +279,13 @@
     font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.14em;
     color: var(--text-faint); margin-bottom: 5px; padding: 0 2px;
   }
+  .wave-toggle {
+    cursor: pointer; user-select: none;
+    border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px;
+    color: var(--text-dim); letter-spacing: 0.12em;
+  }
+  .wave-toggle:hover { color: var(--text); border-color: var(--text-faint); }
+  .wave-toggle:focus-visible { outline: 2px solid var(--perfect); outline-offset: 2px; }
   canvas.wave {
     display: block; width: 100%; height: 48px;
     border-radius: 8px; background: #0a0b14;
@@ -436,7 +443,11 @@
 
   <!-- Waveform -->
   <div class="wavewrap">
-    <div class="wave-head"><span>RGB WAVEFORM &mdash; LOW / MID / HIGH + VOX</span><span id="wave-time">00:00</span></div>
+    <div class="wave-head">
+      <span id="wave-label">RGB &middot; LOW / MID / HIGH + VOX</span>
+      <span class="wave-toggle" id="wave-toggle" role="button" tabindex="0" aria-label="Switch waveform color theme">CLASSIC &#9656;</span>
+      <span id="wave-time">00:00</span>
+    </div>
     <canvas class="wave" id="wave" width="1072" height="96"></canvas>
   </div>
 
@@ -863,7 +874,18 @@
     vox: css.getPropertyValue("--vox").trim(),
   };
 
+  // Waveform color themes. The game markers/lanes always stay RGB; only this
+  // strip switches, so the default still reinforces the marker color language.
+  const WAVE_THEMES = {
+    rgb:     { low: COL.low,   mid: COL.mid,   high: COL.high,   vox: COL.vox,   label: "RGB · LOW / MID / HIGH + VOX", next: "CLASSIC ▸" },
+    classic: { low: "#2f7dff", mid: "#ffb02e", high: "#eaf0ff", vox: "#7fe0ff", label: "CLASSIC · blue / amber / white",   next: "RGB ▸" },
+  };
+  let waveTheme = "rgb";
+  let wProgress = 0;
+
   function drawWave(progress) {
+    wProgress = progress;
+    const T = WAVE_THEMES[waveTheme];
     const W = wave.width, H = wave.height, mid = H / 2;
     wctx.clearRect(0, 0, W, H);
     const cw = W / WCOLS;
@@ -876,19 +898,19 @@
       const alpha = (i / WCOLS) <= progress ? 1 : 0.22;
       const lo = d.low * scale, md = d.mid * scale, hi = d.high * scale;
       wctx.globalAlpha = alpha;
-      wctx.fillStyle = COL.low;  wctx.fillRect(x, mid - lo, bw, lo * 2);
-      wctx.fillStyle = COL.mid;  wctx.fillRect(x, mid - lo - md, bw, md);
-                                 wctx.fillRect(x, mid + lo, bw, md);
-      wctx.fillStyle = COL.high; wctx.fillRect(x, mid - lo - md - hi, bw, hi);
-                                 wctx.fillRect(x, mid + lo + md, bw, hi);
+      wctx.fillStyle = T.low;  wctx.fillRect(x, mid - lo, bw, lo * 2);
+      wctx.fillStyle = T.mid;  wctx.fillRect(x, mid - lo - md, bw, md);
+                               wctx.fillRect(x, mid + lo, bw, md);
+      wctx.fillStyle = T.high; wctx.fillRect(x, mid - lo - md - hi, bw, hi);
+                               wctx.fillRect(x, mid + lo + md, bw, hi);
     }
-    // vocal presence: gold highlight overlay over the chorus regions
+    // vocal presence: highlight overlay over the chorus regions
     for (let i = 0; i < WCOLS; i++) {
       if (waveData[i].vox > 0) {
         const x = i * cw;
         const played = (i / WCOLS) <= progress ? 1 : 0.22;
         wctx.globalAlpha = played * 0.16 * waveData[i].vox;
-        wctx.fillStyle = COL.vox;
+        wctx.fillStyle = T.vox;
         wctx.fillRect(x, 0, bw, H);
       }
     }
@@ -901,6 +923,20 @@
     wctx.fillRect(px - 1, 0, 2, H);
   }
   drawWave(0);
+
+  // Waveform theme toggle (RGB <-> Classic)
+  const waveToggle = document.getElementById("wave-toggle");
+  const waveLabel = document.getElementById("wave-label");
+  function toggleWave() {
+    waveTheme = waveTheme === "rgb" ? "classic" : "rgb";
+    waveLabel.textContent = WAVE_THEMES[waveTheme].label;
+    waveToggle.textContent = WAVE_THEMES[waveTheme].next;
+    drawWave(wProgress);
+  }
+  waveToggle.addEventListener("click", toggleWave);
+  waveToggle.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleWave(); }
+  });
 
   const waveTime = document.getElementById("wave-time");
   function fmtTime(s) {
