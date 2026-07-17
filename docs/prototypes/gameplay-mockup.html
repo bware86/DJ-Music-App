@@ -182,43 +182,60 @@
   .marker.triangle .body { clip-path: polygon(50% 6%, 96% 92%, 4% 92%); }
   .marker.diamond .body { clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%); }
 
-  /* hit line */
+  /* hit line — the whole lane column is the tap target; the button sits on the line */
+  .lane { pointer-events: auto; cursor: pointer; }
   .hitline {
     position: absolute; left: 0; right: 0; bottom: 96px; height: 0;
-    z-index: 3; pointer-events: none;
+    z-index: 5; pointer-events: none;
   }
   .hitline .bar {
     position: absolute; left: 8px; right: 8px; top: -1px; height: 2px;
-    background: linear-gradient(90deg, transparent, #ffffff55 12%, #ffffff88 50%, #ffffff55 88%, transparent);
+    background: linear-gradient(90deg, transparent, #ffffff55 12%, #ffffff99 50%, #ffffff55 88%, transparent);
   }
-  .hitzone {
-    position: absolute; left: 0; right: 0; bottom: 74px; height: 44px;
-    z-index: 2; pointer-events: none;
-    background: linear-gradient(180deg, transparent, #ffffff0c 45%, #ffffff0c 55%, transparent);
-    border-top: 1px solid #ffffff14; border-bottom: 1px solid #ffffff14;
-  }
-  .target {
-    position: absolute; bottom: 74px; height: 44px; z-index: 4;
+  .hitbtn {
+    position: absolute; left: 7px; right: 7px; bottom: 74px; height: 46px;
+    z-index: 4; pointer-events: none;
     display: flex; align-items: center; justify-content: center;
-    pointer-events: none;
+    border-radius: 12px;
+    border: 1.5px solid color-mix(in srgb, var(--c) 55%, transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--c) 12%, transparent), color-mix(in srgb, var(--c) 4%, transparent));
+    box-shadow: inset 0 0 14px -6px var(--c);
+    transition: background .1s ease, box-shadow .1s ease, transform .06s ease;
   }
-  .target .ring {
-    width: 46px; height: 46px; border-radius: 12px;
-    border: 2px solid var(--c); opacity: 0.4;
-    box-shadow: 0 0 14px var(--c) inset;
+  .hitbtn .g {
+    width: 18px; height: 18px; opacity: 0.85; filter: drop-shadow(0 0 5px var(--c));
+    background: linear-gradient(160deg, color-mix(in srgb, var(--c) 82%, white), var(--c));
   }
-  .target.circle .ring { border-radius: 50%; }
+  .hitbtn.sq .g { border-radius: 5px; }
+  .hitbtn.ci .g { border-radius: 50%; }
+  .hitbtn.tr .g { clip-path: polygon(50% 6%, 96% 92%, 4% 92%); }
+  .hitbtn.di .g { clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%); }
+  .lane.press .hitbtn {
+    transform: translateY(1px) scale(0.97);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--c) 42%, transparent), color-mix(in srgb, var(--c) 16%, transparent));
+    box-shadow: 0 0 20px -4px var(--c), inset 0 0 0 1px var(--c);
+  }
 
-  /* hit burst */
-  .burst {
-    position: absolute; z-index: 6; width: 54px; height: 54px; margin-left: -27px;
-    border-radius: 50%; pointer-events: none;
-    border: 2px solid var(--c);
-    animation: burst .38s ease-out forwards;
+  /* shatter shards (hit) */
+  .shard {
+    position: absolute; top: 0; left: 50%; z-index: 6;
+    width: var(--sz); height: var(--sz); margin-left: calc(var(--sz) / -2);
+    background: linear-gradient(160deg, color-mix(in srgb, var(--c) 85%, white), var(--c));
+    filter: drop-shadow(0 0 4px var(--c)); pointer-events: none;
+    animation: shatter var(--dur) cubic-bezier(.15, .6, .3, 1) forwards;
   }
-  @keyframes burst {
-    from { transform: scale(0.5); opacity: 0.9; }
-    to   { transform: scale(2.1); opacity: 0; }
+  .shard.tri { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+  .shard.sq  { border-radius: 2px; }
+  .shard.sh  { clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%); }
+  @keyframes shatter {
+    0%   { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+    100% { transform: translate(var(--tx), var(--ty)) rotate(var(--rot)) scale(.25); opacity: 0; }
+  }
+  /* miss — the shape stays whole and just fades out */
+  .marker.missfade { animation: missfade .5s ease forwards; }
+  @keyframes missfade {
+    0%   { opacity: 0.9; }
+    100% { opacity: 0; filter: grayscale(1) brightness(.55); }
   }
 
   /* judgment flash */
@@ -236,40 +253,28 @@
     100% { opacity: 0; transform: translateY(-6px) scale(1); }
   }
 
-  /* ---------- Controls ---------- */
-  .controls {
+  /* ---------- Lane indicators (thin reference strip) ---------- */
+  .laneindic {
     display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 8px; padding: 12px 12px 10px;
+    gap: 6px; padding: 7px 12px 9px;
   }
-  .pad {
-    position: relative;
-    display: flex; flex-direction: column; align-items: center; gap: 7px;
-    padding: 12px 4px 10px;
-    border-radius: 12px;
-    background: linear-gradient(180deg, #14152480, #0e0f1a80);
-    border: 1px solid var(--line);
-    cursor: pointer; user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    transition: transform .06s ease, background .12s ease, box-shadow .12s ease;
+  .laneindic .li {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 5px 4px; border-radius: 8px;
+    background: #ffffff06; border: 1px solid var(--line);
   }
-  .pad:active, .pad.down {
-    transform: translateY(2px);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--c) 26%, #14152480), #0e0f1a90);
-    box-shadow: 0 0 18px -2px var(--c), inset 0 0 0 1px color-mix(in srgb, var(--c) 60%, transparent);
+  .laneindic .li .g {
+    width: 12px; height: 12px; flex: none; filter: drop-shadow(0 0 4px var(--c));
+    background: linear-gradient(160deg, color-mix(in srgb, var(--c) 82%, white), var(--c));
   }
-  .pad .glyph { width: 26px; height: 26px; filter: drop-shadow(0 0 6px var(--c)); }
-  .pad .glyph i { display: block; width: 100%; height: 100%;
-    background: linear-gradient(160deg, color-mix(in srgb, var(--c) 80%, white), var(--c)); }
-  .pad.square  .glyph i { border-radius: 7px; }
-  .pad.circle  .glyph i { border-radius: 50%; }
-  .pad.triangle .glyph i { clip-path: polygon(50% 6%, 96% 92%, 4% 92%); }
-  .pad.diamond .glyph i { clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%); }
-  .pad .name { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; }
-  .pad .sub  { font-size: 9px; color: var(--text-dim); letter-spacing: 0.04em; }
-  .pad .key {
-    font-family: var(--mono); font-size: 9px; color: var(--text-faint);
-    border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; margin-top: 1px;
-    letter-spacing: 0.1em;
+  .laneindic .li.sq .g { border-radius: 3px; }
+  .laneindic .li.ci .g { border-radius: 50%; }
+  .laneindic .li.tr .g { clip-path: polygon(50% 6%, 96% 92%, 4% 92%); }
+  .laneindic .li.di .g { clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%); }
+  .laneindic .li .nm { font-size: 10px; font-weight: 800; letter-spacing: 0.05em; }
+  .laneindic .li .k {
+    font-family: var(--mono); font-size: 8px; color: var(--text-faint);
+    border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; letter-spacing: 0.08em;
   }
 
   /* ---------- Waveform strip ---------- */
@@ -392,8 +397,23 @@
   .lanebreak .lb .fill { height: 100%; background: var(--c); border-radius: 4px; box-shadow: 0 0 8px var(--c); width: 0; transition: width .6s ease; }
   .lanebreak .lb .pct { font-family: var(--mono); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
 
+  /* results — track info card */
+  .overlay.results { justify-content: flex-start; overflow-y: auto; padding-top: 22px; padding-bottom: 22px; }
+  .rtrack { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 340px; margin-bottom: 12px; text-align: left; }
+  .rtrack .art { width: 54px; height: 54px; flex: none; }
+  .rtrack .rmeta { min-width: 0; flex: 1; }
+  .rtitle { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rartist { font-size: 12px; color: var(--text-dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rtags { display: flex; gap: 6px; margin-top: 7px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; }
+  .rtags span { border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; color: var(--text-dim); }
+  .rtags span.diff { color: #08080f; background: var(--vox); border-color: transparent; font-weight: 700; }
+  canvas.rwave {
+    display: block; width: 100%; max-width: 340px; height: 44px;
+    border-radius: 7px; background: #000; border: 1px solid var(--line-soft); margin-bottom: 16px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .burst { animation: none; display: none; }
+    .shard { display: none; }
     .judge.show { animation-duration: .01ms; opacity: 0; }
     .count b { animation: none; }
   }
@@ -433,13 +453,12 @@
   <!-- Stage -->
   <div class="stage" id="stage">
     <div class="lanes" id="lanes"></div>
-    <div class="hitzone"></div>
     <div class="hitline"><div class="bar"></div></div>
     <div class="judge" id="judge"></div>
   </div>
 
-  <!-- Controls -->
-  <div class="controls" id="controls"></div>
+  <!-- Lane indicators (thin reference strip) -->
+  <div class="laneindic" id="laneindic"></div>
 
   <!-- Waveform -->
   <div class="wavewrap">
@@ -478,12 +497,25 @@
     </div>
 
     <button class="btn" id="startbtn">Start</button>
-    <div class="hint">KEYS &nbsp;D &nbsp;F &nbsp;J &nbsp;K &nbsp;&middot;&nbsp; OR TAP THE PADS</div>
+    <div class="hint">KEYS &nbsp;D &nbsp;F &nbsp;J &nbsp;K &nbsp;&middot;&nbsp; OR TAP THE LANE ON THE LINE</div>
     <div class="working">WORKING TITLE &middot; PROTOTYPE</div>
   </div>
 
   <!-- Results overlay -->
   <div class="overlay hidden results" id="results">
+    <div class="rtrack">
+      <div class="art" aria-hidden="true"></div>
+      <div class="rmeta">
+        <div class="rtitle" id="rtitle">Nocturne Transit</div>
+        <div class="rartist" id="rartist">Kova &middot; Afterhours EP</div>
+        <div class="rtags">
+          <span id="rbpm">128 BPM</span>
+          <span id="rkey">8A</span>
+          <span class="diff" id="rdiff">NORMAL</span>
+        </div>
+      </div>
+    </div>
+    <canvas class="rwave" id="rwave" width="1240" height="120"></canvas>
     <h2>SET COMPLETE</h2>
     <div class="grade" id="grade">S</div>
     <div class="fscore" id="fscore">0</div>
@@ -530,6 +562,7 @@
   // ---- State ----
   const MARKER_HALF = 27;   // half the 54px marker, so its CENTER aligns to the hit line
   let audioLatency = 0;     // speaker output latency, so visuals match what's heard
+  const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   let ac = null;
   let master = null;
@@ -550,50 +583,41 @@
 
   // ---- Build lane DOM ----
   const lanesEl = document.getElementById("lanes");
-  const controlsEl = document.getElementById("controls");
+  const indicEl = document.getElementById("laneindic");
   const stageEl = document.getElementById("stage");
   const laneNodes = {};
   const markerLayers = {};
-  const padNodes = {};
+  const shapeCls = { square: "sq", circle: "ci", triangle: "tr", diamond: "di" };
 
   LANES.forEach(function (L) {
+    const sc = shapeCls[L.shape];
     const lane = document.createElement("div");
     lane.className = "lane";
     lane.style.setProperty("--c", "var(" + L.varc + ")");
     lane.innerHTML =
       '<div class="glow"></div><div class="beam"></div>' +
       '<div class="markerlayer"></div>' +
-      '<div class="target ' + (L.shape === "circle" ? "circle" : "") + '"><div class="ring"></div></div>';
+      '<div class="hitbtn ' + sc + '"><span class="g"></span></div>';
+    // the whole lane column is the tap target, and the button sits on the line
+    lane.addEventListener("pointerdown", function (e) { e.preventDefault(); hit(L.id); });
     lanesEl.appendChild(lane);
     laneNodes[L.id] = lane;
     markerLayers[L.id] = lane.querySelector(".markerlayer");
     laneStats[L.id] = { hit: 0, total: 0 };
 
-    const pad = document.createElement("div");
-    pad.className = "pad " + L.shape;
-    pad.style.setProperty("--c", "var(" + L.varc + ")");
-    pad.innerHTML =
-      '<span class="glyph"><i></i></span>' +
-      '<span class="name">' + L.name + '</span>' +
-      '<span class="sub">' + L.sub + '</span>' +
-      '<span class="key">' + L.key.toUpperCase() + '</span>';
-    pad.addEventListener("pointerdown", function (e) { e.preventDefault(); hit(L.id); });
-    controlsEl.appendChild(pad);
-    padNodes[L.id] = pad;
+    // thin reference indicator at the bottom (not the input anymore)
+    const li = document.createElement("div");
+    li.className = "li " + sc;
+    li.style.setProperty("--c", "var(" + L.varc + ")");
+    li.innerHTML =
+      '<span class="g"></span><span class="nm">' + L.name + '</span>' +
+      '<span class="k">' + L.key.toUpperCase() + '</span>';
+    indicEl.appendChild(li);
   });
 
-  // position targets & judge line to match .hitline (bottom:96 in CSS -> here we align)
-  function layoutTargets() {
-    const laneW = stageEl.clientWidth / 4;
-    LANES.forEach(function (L, i) {
-      const t = laneNodes[L.id].querySelector(".target");
-      t.style.left = "0"; t.style.right = "0";
-    });
-  }
-
-  // hit line vertical position within stage (px from top)
+  // hit line vertical position within stage (px from top), matching .hitbtn center
   function hitLineY() {
-    return stageEl.clientHeight - 96; // matches .hitline bottom:96px + target center approx
+    return stageEl.clientHeight - 96;
   }
 
   // ---- Audio ----
@@ -748,7 +772,7 @@
   // ---- Judgment ----
   function hit(id) {
     if (!running) return;
-    flashPad(id);
+    flashHit(id);
     laneNodes[id].classList.add("flash");
     setTimeout(function () { laneNodes[id].classList.remove("flash"); }, 120);
 
@@ -779,7 +803,7 @@
     judged++; weightSum += weight;
     laneStats[m.lane].hit++;
 
-    burst(m);
+    shatter(m, kind);
     showJudge(kind, deltaMs);
     removeMarker(m);
     updateHUD(true);
@@ -790,7 +814,14 @@
     combo = 0;
     judged++; weightSum += 0;
     showJudge("MISS", null);
-    removeMarker(m);
+    // the shape stays WHOLE on a miss — it just stops and fades
+    const idx = markers.indexOf(m);
+    if (idx !== -1) markers.splice(idx, 1);
+    const n = m.node;
+    if (n) {
+      if (!REDUCED) n.classList.add("missfade");
+      setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, REDUCED ? 0 : 480);
+    }
     updateHUD(false);
   }
 
@@ -817,20 +848,43 @@
     judgeEl.innerHTML = kind + ms;
     judgeEl.classList.remove("show"); void judgeEl.offsetWidth; judgeEl.classList.add("show");
   }
-  function burst(m) {
+  // Shatter the marker into pieces. Perfect = many, Good = several, Bad = 2-3.
+  const SHARDS = { PERFECT: 14, GOOD: 7, BAD: 3 };
+  const SHARD_SHAPES = ["tri", "sq", "sh"];
+  function shatter(m, kind) {
+    if (REDUCED) return;
     const L = LANES.find(function (x) { return x.id === m.lane; });
-    const b = document.createElement("div");
-    b.className = "burst";
-    b.style.setProperty("--c", "var(" + L.varc + ")");
-    b.style.left = "50%";
-    b.style.bottom = "74px";
-    markerLayers[m.lane].parentNode.appendChild(b);
-    setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 400);
+    const layer = markerLayers[m.lane];
+    // marker's current top-edge position in the lane
+    const progress = (ac.currentTime - (m.hitTime - LEAD)) / LEAD;
+    const y = progress * hitLineY() - MARKER_HALF;
+    const count = SHARDS[kind] || 3;
+    const spread = kind === "PERFECT" ? 42 : kind === "GOOD" ? 30 : 16;
+    for (let i = 0; i < count; i++) {
+      const s = document.createElement("div");
+      s.className = "shard " + SHARD_SHAPES[(Math.random() * SHARD_SHAPES.length) | 0];
+      s.style.setProperty("--c", "var(" + L.varc + ")");
+      const sz = kind === "BAD" ? 16 + Math.random() * 6 : 7 + Math.random() * 12;
+      s.style.setProperty("--sz", sz.toFixed(1) + "px");
+      const ox = (Math.random() * 2 - 1) * 18;
+      s.style.marginLeft = (ox - sz / 2) + "px";
+      s.style.top = (y + MARKER_HALF + (Math.random() * 2 - 1) * 18) + "px";
+      const ang = Math.random() * Math.PI * 2;
+      const dist = spread + Math.random() * 55;
+      s.style.setProperty("--tx", (Math.cos(ang) * dist).toFixed(0) + "px");
+      s.style.setProperty("--ty", (Math.sin(ang) * dist * 0.6 + 45).toFixed(0) + "px"); // gravity bias
+      s.style.setProperty("--rot", ((Math.random() * 2 - 1) * 540).toFixed(0) + "deg");
+      s.style.setProperty("--dur", (0.5 + Math.random() * 0.35).toFixed(2) + "s");
+      layer.appendChild(s);
+      (function (node) {
+        setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 950);
+      })(s);
+    }
   }
-  function flashPad(id) {
-    const p = padNodes[id];
-    p.classList.add("down");
-    setTimeout(function () { p.classList.remove("down"); }, 90);
+  function flashHit(id) {
+    const lane = laneNodes[id];
+    lane.classList.add("press");
+    setTimeout(function () { lane.classList.remove("press"); }, 100);
   }
 
   // ---- HUD ----
@@ -898,79 +952,80 @@
   let wProgress = 0;
 
   // one mirrored band bar, centered on the axis
-  function band(x, h, color, a, mid, bw) {
+  function band(ctx, x, h, color, a, mid, bw) {
     if (h < 0.5) h = 0.5;
-    wctx.globalAlpha = a;
-    wctx.fillStyle = color;
-    wctx.fillRect(x, mid - h, bw, h * 2);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, mid - h, bw, h * 2);
   }
-  function tri(x, y, s, down) {
-    wctx.beginPath();
-    wctx.moveTo(x - s, y);
-    wctx.lineTo(x + s, y);
-    wctx.lineTo(x, down ? y + s * 1.5 : y - s * 1.5);
-    wctx.closePath();
-    wctx.fill();
+  function tri(ctx, x, y, s, down) {
+    ctx.beginPath();
+    ctx.moveTo(x - s, y);
+    ctx.lineTo(x + s, y);
+    ctx.lineTo(x, down ? y + s * 1.5 : y - s * 1.5);
+    ctx.closePath();
+    ctx.fill();
   }
-  function drawGrid(W, H) {
+  function drawGrid(ctx, W, H) {
     const cw = W / WCOLS;
     const colsPerBar = WCOLS / VIS_BARS;
     for (let b = 0; b <= VIS_BARS; b++) {
       const x = Math.round(b * colsPerBar * cw) + 0.5;
       const phrase = b % 4 === 0;   // phrase boundary (every 4 bars) = red markers
-      wctx.globalAlpha = phrase ? 0.34 : 0.12;
-      wctx.fillStyle = "#ffffff";
-      wctx.fillRect(x, 5, 1, H - 10);
+      ctx.globalAlpha = phrase ? 0.34 : 0.12;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(x, 5, 1, H - 10);
       if (phrase) {
-        wctx.globalAlpha = 0.95; wctx.fillStyle = "#ff2d55";
-        tri(x, 1, 5, true); tri(x, H - 1, 5, false);
+        ctx.globalAlpha = 0.95; ctx.fillStyle = "#ff2d55";
+        tri(ctx, x, 1, 5, true); tri(ctx, x, H - 1, 5, false);
       } else {
-        wctx.globalAlpha = 0.5; wctx.fillStyle = "#9aa0b8";
-        tri(x, 1, 3.5, true); tri(x, H - 1, 3.5, false);
+        ctx.globalAlpha = 0.5; ctx.fillStyle = "#9aa0b8";
+        tri(ctx, x, 1, 3.5, true); tri(ctx, x, H - 1, 3.5, false);
       }
     }
-    wctx.globalAlpha = 1;
+    ctx.globalAlpha = 1;
   }
 
-  function drawWave(progress) {
-    wProgress = progress;
+  // Rekordbox-style additive RGB waveform, drawn to any canvas context.
+  function renderWave(ctx, W, H, progress) {
     const T = WAVE_THEMES[waveTheme];
-    const W = wave.width, H = wave.height, mid = H / 2;
-    wctx.clearRect(0, 0, W, H);
-    wctx.fillStyle = "#000"; wctx.fillRect(0, 0, W, H);
+    const mid = H / 2;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
     const cw = W / WCOLS;
     const bw = Math.max(1, cw * 0.92);
     const scale = mid * 0.97;
-    // additive blend: bands glow together (pure red on bass, cyan in breakdown,
-    // white/pink where broadband) — the Rekordbox RGB look
-    wctx.globalCompositeOperation = "lighter";
+    ctx.globalCompositeOperation = "lighter";
     for (let i = 0; i < WCOLS; i++) {
       const d = waveData[i];
       const x = i * cw;
       const a = (i / WCOLS) <= progress ? 1 : 0.34;
-      band(x, d.high * scale, T.high, a, mid, bw);
-      band(x, d.mid * scale, T.mid, a, mid, bw);
-      band(x, d.low * scale, T.low, a, mid, bw);
+      band(ctx, x, d.high * scale, T.high, a, mid, bw);
+      band(ctx, x, d.mid * scale, T.mid, a, mid, bw);
+      band(ctx, x, d.low * scale, T.low, a, mid, bw);
     }
-    wctx.globalCompositeOperation = "source-over";
-    // vocal presence: subtle highlight overlay over the chorus regions
+    ctx.globalCompositeOperation = "source-over";
     for (let i = 0; i < WCOLS; i++) {
       if (waveData[i].vox > 0) {
         const x = i * cw;
         const played = (i / WCOLS) <= progress ? 1 : 0.34;
-        wctx.globalAlpha = played * 0.12 * waveData[i].vox;
-        wctx.fillStyle = T.vox;
-        wctx.fillRect(x, 0, bw, H);
+        ctx.globalAlpha = played * 0.12 * waveData[i].vox;
+        ctx.fillStyle = T.vox;
+        ctx.fillRect(x, 0, bw, H);
       }
     }
-    wctx.globalAlpha = 1;
-    drawGrid(W, H);
-    // dim the un-played remainder, then the red playhead
+    ctx.globalAlpha = 1;
+    drawGrid(ctx, W, H);
     const px = progress * W;
-    wctx.fillStyle = "#00000073";
-    wctx.fillRect(px, 0, W - px, H);
-    wctx.fillStyle = "#ff2d55";
-    wctx.fillRect(px - 1, 0, 2, H);
+    ctx.fillStyle = "#00000073";
+    ctx.fillRect(px, 0, W - px, H);
+    ctx.fillStyle = "#ff2d55";
+    ctx.fillRect(px - 1, 0, 2, H);
+  }
+
+  function drawWave(progress) {
+    wProgress = progress;
+    renderWave(wctx, wave.width, wave.height, progress);
   }
   drawWave(0);
 
@@ -1030,7 +1085,6 @@
     initAudio();
     if (ac.state === "suspended") ac.resume();
     startOverlay.classList.add("hidden");
-    layoutTargets();
     // reset state
     markers.forEach(function (m) { if (m.node.parentNode) m.node.parentNode.removeChild(m.node); });
     markers.length = 0;
@@ -1066,6 +1120,10 @@
   function finish() {
     running = false;
     if (schedTimer) clearTimeout(schedTimer);
+    // track info card + full waveform on the results screen
+    document.getElementById("rdiff").textContent = diff.toUpperCase();
+    const rwave = document.getElementById("rwave");
+    renderWave(rwave.getContext("2d"), rwave.width, rwave.height, 1);
     // final acc
     const acc = judged ? (weightSum / judged) * 100 : 100;
     document.getElementById("fscore").textContent = score.toLocaleString() + " pts";
@@ -1108,6 +1166,5 @@
     else if (e.key === "Enter" && !startOverlay.classList.contains("hidden")) begin();
   });
 
-  window.addEventListener("resize", layoutTargets);
 })();
 </script>
